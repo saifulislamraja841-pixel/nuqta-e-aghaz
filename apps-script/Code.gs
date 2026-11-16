@@ -9,11 +9,11 @@
 
 /* ======================= EDIT THESE ======================= */
 const ADMIN_KEY = "change-this-to-a-long-secret";        // password for the team dashboard
-const SITE_URL  = "https://your-site.com/";               // where index.html is hosted (ends with /)
+const SITE_URL  = "https://www.nuqtaeaghaz.org/";        // where index.html is hosted (ends with /)
 const SEND_AMBASSADOR_EMAIL = true;                       // email new ambassadors their code + link
 
 /* Names of the response tabs inside the master spreadsheet.
-   (Rename each "Form Responses N" tab to these, or change these to match.) */
+   setup() finds the tabs linked to FORM_IDS below and renames them for you. */
 const TABS = {
   main:        "Main Event",
   ambassador:  "Ambassadors",
@@ -22,13 +22,20 @@ const TABS = {
   stall:       "Stalls",
 };
 const ANN_TAB = "Announcements";
-const CODE_PREFIX = "NA-";
+/* Your existing Google Forms (the id between /d/ and /edit in the form's edit link) */
+const FORM_IDS = {
+  ambassador:   "1Bqs-XiIk80YuAV51vBtzQQLhhdT5dsLZ6K_C72IHBoY",   // UET Ambassador Registration
+  competitions: "15u_eCT5mSdqM9g7YgKIjjf2ZcmDlgMiEm45PQS2LpZo",   // Competitions Form
+};
+const CODE_PREFIX = "NEA";   // codes look like NEA01, NEA02 … (the format your Competitions form asks for)
+const CODE_DIGITS = 2;
 const COMPETITIONS = [
-  ["Qirat", /qir+a+t|qira'?at|recitation/i],
-  ["Naat", /naat|na'at|nat\b/i],
-  ["Debate", /debat/i],
-  ["Calligraphy", /calligra/i],
+  ["Qirat", /qir|recitation/i],
+  ["Naat", /naat|na'at|\bnat\b/i],
+  ["Urdu Debate", /urdu.*debat/i],
+  ["English Debate", /english.*debat/i],
   ["Painting", /paint/i],
+  ["Calligraphy", /cal+ig+ra/i],
 ];
 /* ========================================================== */
 
@@ -53,7 +60,8 @@ function setup() {
     ann.appendRow(["ID", "Timestamp", "Title", "Message", "Audience", "Link", "Pinned"]);
     ann.setFrozenRows(1);
   }
-  Object.values(TABS).forEach(t => { if (!ss.getSheetByName(t)) Logger.log("⚠ Tab not found: " + t + " — rename your response tab or edit TABS."); });
+  linkFormTabs_();
+  Object.values(TABS).forEach(t => { if (!ss.getSheetByName(t)) Logger.log("ℹ Tab not found (fine if you don't use this form yet): " + t); });
   assignAmbassadorCodes_(false);
   ScriptApp.getProjectTriggers().forEach(tr => { if (tr.getHandlerFunction() === "onAnySubmit") ScriptApp.deleteTrigger(tr); });
   ScriptApp.newTrigger("onAnySubmit").forSpreadsheet(ss).onFormSubmit().create();
@@ -67,7 +75,40 @@ function onAnySubmit(e) {
   CacheService.getScriptCache().remove("stats");
 }
 
-/* Gives every ambassador row a code like NA-007 in an "Ambassador Code" column */
+/* Finds the response tab of each form in FORM_IDS and renames it to the TABS name */
+function linkFormTabs_() {
+  const ss = SpreadsheetApp.getActive();
+  Object.keys(FORM_IDS).forEach(k => {
+    if (ss.getSheetByName(TABS[k])) return;
+    const sh = ss.getSheets().find(s => { const u = s.getFormUrl(); return u && u.indexOf(FORM_IDS[k]) >= 0; })
+      || ss.getSheets().find(s => { const u = s.getFormUrl(); return u && FormApp.openByUrl(u).getId() === FORM_IDS[k]; });
+    if (sh) { sh.setName(TABS[k]); Logger.log("✓ " + TABS[k] + " tab linked"); }
+    else Logger.log("⚠ No tab linked to the " + TABS[k] + " form yet. In the form: Responses → Link to Sheets → Select existing spreadsheet → this one.");
+  });
+}
+
+/* Run this ONCE by hand if you want every existing ambassador emailed their code + link */
+function emailExistingAmbassadors() { assignAmbassadorCodes_(false); emailCodes_(true); }
+function emailCodes_(all) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(TABS.ambassador);
+  if (!sh || sh.getLastRow() < 2) return;
+  readTab_("ambassador").forEach(a => { if (a.code && a.email) sendCodeEmail_(a.email, a.name, a.code); });
+}
+function sendCodeEmail_(to, name, code) {
+  try {
+    const link = SITE_URL + "index.html?ref=" + code;
+    MailApp.sendEmail({
+      to: String(to).trim(),
+      subject: "Your Nuqta-e-Aghaz Ambassador Code: " + code,
+      htmlBody: "Assalam o Alaikum " + (name || "") + ",<br><br>Welcome to the Nuqta-e-Aghaz Campus Ambassador Program!<br><br>" +
+        "Your code: <b style='font-size:18px'>" + code + "</b><br>Your referral link: <a href='" + link + "'>" + link + "</a><br><br>" +
+        "Ask friends to enter " + code + " in the \"Ambassador Referral Code\" field, or share your link and it is filled in for them. " +
+        "Track your referrals (only you can see them) in My Portal: <a href='" + SITE_URL + "portal.html'>" + SITE_URL + "portal.html</a><br><br>— Team Nuqta-e-Aghaz",
+    });
+  } catch (err) { Logger.log("Email failed: " + err); }
+}
+
+/* Gives every ambassador row a code like NEA07 in an "Ambassador Code" column */
 function assignAmbassadorCodes_(sendEmail) {
   const sh = SpreadsheetApp.getActive().getSheetByName(TABS.ambassador);
   if (!sh || sh.getLastRow() < 2) return;
@@ -82,19 +123,8 @@ function assignAmbassadorCodes_(sendEmail) {
   let changed = false;
   codes.forEach((c, i) => {
     if (!c[0]) {
-      c[0] = CODE_PREFIX + String(i + 1).padStart(3, "0"); changed = true;
-      if (sendEmail && ei >= 0 && data[i][ei]) {
-        try {
-          const link = SITE_URL + "index.html?ref=" + c[0];
-          MailApp.sendEmail({
-            to: String(data[i][ei]).trim(),
-            subject: "Your Nuqta-e-Aghaz Ambassador Code: " + c[0],
-            htmlBody: "Assalam o Alaikum " + (ni >= 0 ? data[i][ni] : "") + ",<br><br>Welcome to the Nuqta-e-Aghaz Campus Ambassador Program!<br><br>" +
-              "Your code: <b style='font-size:18px'>" + c[0] + "</b><br>Your referral link: <a href='" + link + "'>" + link + "</a><br><br>" +
-              "Every registration through this link counts for you on the leaderboard. Track your referrals in My Portal: <a href='" + SITE_URL + "portal.html'>" + SITE_URL + "portal.html</a><br><br>— Team Nuqta-e-Aghaz",
-          });
-        } catch (err) { Logger.log("Email failed: " + err); }
-      }
+      c[0] = CODE_PREFIX + String(i + 1).padStart(CODE_DIGITS, "0"); changed = true;
+      if (sendEmail && ei >= 0 && data[i][ei]) sendCodeEmail_(data[i][ei], ni >= 0 ? data[i][ni] : "", c[0]);
     }
   });
   if (changed) sh.getRange(2, ci + 1, n, 1).setValues(codes);
@@ -119,9 +149,9 @@ function readTab_(key) {
   }).filter(r => r.status !== "rejected");
 }
 function normCode_(s) {
-  s = String(s || "").toUpperCase().replace(/\s+/g, "");
-  const m = s.match(/^N?A?-?0*(\d{1,4})$/);
-  return m ? CODE_PREFIX + m[1].padStart(3, "0") : s;
+  s = String(s || "").toUpperCase().replace(/[\s_.]+/g, "");
+  const m = s.match(/^(?:NEA|NA|NE|N)?-?0*(\d{1,4})$/);
+  return m ? CODE_PREFIX + m[1].padStart(CODE_DIGITS, "0") : s;
 }
 function compsOf_(s) { return COMPETITIONS.filter(c => c[1].test(s)).map(c => c[0]); }
 function dayKey_(d) { return Utilities.formatDate(d, "Asia/Karachi", "yyyy-MM-dd"); }
@@ -217,21 +247,16 @@ function readAnn_() {
 }
 
 /* -------------------- HTTP endpoints -------------------- */
+/* The dashboard stays locked until you replace the placeholder ADMIN_KEY */
+function keyOk_(k) { return ADMIN_KEY !== "change-this-to-a-long-secret" && ADMIN_KEY.length >= 10 && String(k) === ADMIN_KEY; }
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
 function doGet(e) {
   const p = (e && e.parameter) || {};
   try {
-    if (p.action === "stats") { if (p.key !== ADMIN_KEY) return json_({ error: "Invalid admin key" }); return json_(stats_()); }
+    if (p.action === "stats") { if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" }); return json_(stats_()); }
     if (p.action === "portal") return json_(portal_(p.email, p.phone4));
     if (p.action === "announcements") return json_({ announcements: readAnn_().filter(a => a.audience === "all") });
-    if (p.action === "leaderboard") {
-      const lim = Math.min(20, Number(p.limit) || 5);
-      return json_({ leaderboard: stats_().leaderboard.filter(a => a.total > 0).slice(0, lim).map(a => {
-        const parts = String(a.name || "Ambassador").split(/\s+/);
-        return { name: parts[0] + (parts[1] ? " " + parts[1][0] + "." : ""), university: a.university, total: a.total };
-      }) });
-    }
     return json_({ ok: true, service: "Nuqta-e-Aghaz API" });
   } catch (err) { return json_({ error: String(err) }); }
 }
@@ -239,7 +264,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     const p = JSON.parse(e.postData.contents || "{}");
-    if (p.key !== ADMIN_KEY) return json_({ error: "Invalid admin key" });
+    if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" });
     const sh = annSheet_();
     if (p.action === "announce") {
       if (!p.title || !p.message) return json_({ error: "Title and message are required" });
