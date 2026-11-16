@@ -89,7 +89,7 @@
     const done = '<span class="badge ok">Done</span>', go = k=>`<a class="btn btn-primary btn-sm" href="#" data-form="${k}">Register</a>`;
     const regs = [
       item("users","Main event pass", R.main && R.main.registered ? "Registered " + N.timeAgo(R.main.ts) : "Required to enter on event day", R.main && R.main.registered ? done : go("main")),
-      item("trophy","Competitions", (R.competitions||[]).length ? R.competitions.join(", ") : "Qirat, Naat, Debate, Calligraphy, Painting", (R.competitions||[]).length ? done : go("competitions")),
+      item("trophy","Competitions", (R.competitions||[]).length ? R.competitions.join(", ") : "Qirat, Naat, Debates, Painting, Calligraphy", (R.competitions||[]).length ? done : go("competitions")),
       item("star","Talent Award", R.talent && R.talent.applied ? "Application received, under review" : "92%+ inter (1st year) or 3.70+ CGPA", R.talent && R.talent.applied ? done : go("talent")),
     ];
     let amb = "";

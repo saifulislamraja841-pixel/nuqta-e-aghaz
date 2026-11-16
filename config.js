@@ -35,8 +35,10 @@ window.NUQTA_CONFIG = {
                 e.g. "entry.1234567890". Leave "" if that form has no such question. */
   forms: {
     main:        { title: "Main Event Registration",     url: "", refEntry: "" },
-    ambassador:  { title: "Campus Ambassador Application", url: "", refEntry: "" },
-    competitions:{ title: "Competition Registration",    url: "", refEntry: "" },
+    ambassador:  { title: "UET Ambassador Registration",
+                   url: "https://docs.google.com/forms/d/e/1FAIpQLSe7JI-9uPDNm9J8Ld0EU9vb_Ue9FkkMP9RTFNWK_O8qOEEE9g/viewform", refEntry: "" },
+    competitions:{ title: "Competitions Registration",
+                   url: "https://docs.google.com/forms/d/e/1FAIpQLSd3re2BCc5EVtDaGyF-YU_rCcMvQ_nj7Zrxm9_GZuR_YsIsgQ/viewform", refEntry: "entry.1048051579" },
     talent:      { title: "Talent Award Application",    url: "", refEntry: "" },
     stall:       { title: "Stall Booking",               url: "", refEntry: "" },
     sponsor:     { title: "Sponsorship Enquiry",         url: "", refEntry: "" },
