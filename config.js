@@ -27,7 +27,7 @@ window.NUQTA_CONFIG = {
 
   /* Google Apps Script Web App URL (ends with /exec).
      Leave empty "" to run the dashboard & portal on DEMO data. */
-  scriptUrl: "",
+  scriptUrl: "https://script.google.com/macros/s/AKfycbxcFtZMK9XC2A7nJE0R0gqMUjWKIjscb17Fo2s2ydkiAeID5Dy8izk6-ZKnr0EW3b_S5w/exec",
 
   /* Your Google Forms.
      url      → the form's normal link (…/viewform)
