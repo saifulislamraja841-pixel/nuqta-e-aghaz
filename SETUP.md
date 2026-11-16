@@ -5,19 +5,21 @@ The site uses your **existing** Google Forms. Nothing new is created, and all ol
 | Form | Edit link id | On the site |
 |---|---|---|
 | UET Ambassador Registration | `1Bqs-XiIk80YuAV51vBtzQQLhhdT5dsLZ6K_C72IHBoY` | Ambassadors page → "Register as Ambassador" |
-| Competitions Form | `15u_eCT5mSdqM9g7YgKIjjf2ZcmDlgMiEm45PQS2LpZo` | Competitions page → "Register for Competitions" (ambassador code is pre-filled from referral links) |
+| Competitions Form | `15u_eCT5mSdqM9g7YgKIjjf2ZcmDlgMiEm45PQS2LpZo` | Competitions page → "Register for Competitions" |
+| Fiesta (Participants) Registration | `1kJBEDmjI8OOd1b74eWh59VjPNrvVxfPeLBrMFS-tBLA` | Every "Register" button (main event) |
+| UET Talent Award 2026 | `1i0rWdSEtUtZt5hvKyZlXgEgXs21JVNTjF7j5u128geI` | Talent Award page → "Apply" |
 
-Main Event, Talent Award, Stall and Sponsor buttons show "Registration opens shortly" until you add their form links in `config.js`.
+The ambassador code is pre-filled in the Competitions, Fiesta and Talent forms when a student arrives through a referral link. Stall and Sponsor buttons show "Registration opens shortly" until you add their form links in `config.js`.
 
 ## 1. One spreadsheet for both forms (needs edit access to the forms)
 1. Open the **Ambassador** form → **Responses** → **Link to Sheets** → **Create a new spreadsheet**. Name it `Nuqta-e-Aghaz Master`.
-2. Open the **Competitions** form → **Responses** → **Link to Sheets** → **Select existing spreadsheet** → `Nuqta-e-Aghaz Master`.
+2. Do the same for the **Competitions**, **Fiesta Registration** and **Talent Award** forms, but choose **Select existing spreadsheet** → `Nuqta-e-Aghaz Master`.
    Google copies **all previous responses** into the sheet, so old registrations are included.
 
 ## 2. Backend (Apps Script)
 1. In the spreadsheet: **Extensions → Apps Script**. Replace everything in `Code.gs` with `apps-script/Code.gs` from this repo.
 2. At the top, set `ADMIN_KEY` to a long password of your own (the dashboard stays locked while it is the placeholder).
-3. Select `setup` → **Run** → allow the permissions. It renames the two response tabs to `Ambassadors` and `Competitions`, gives every ambassador a code (`NEA01`, `NEA02` …) in an **Ambassador Code** column, and installs the trigger that codes and emails new ambassadors.
+3. Select `setup` → **Run** → allow the permissions. It renames the four response tabs to `Main Event`, `Ambassadors`, `Competitions` and `Talent Award`, gives every ambassador a code (`NEA01`, `NEA02` …) in an **Ambassador Code** column, and installs the trigger that codes and emails new ambassadors.
    - If you already gave ambassadors codes, type them in the **Ambassador Code** column first; `setup` only fills empty cells.
    - To email every existing ambassador their code and link, run `emailExistingAmbassadors` once.
 4. **Deploy → New deployment → Web app** · Execute as **Me** · Who has access **Anyone** → copy the URL ending in `/exec`.

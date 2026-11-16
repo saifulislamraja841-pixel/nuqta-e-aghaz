@@ -34,12 +34,14 @@ window.NUQTA_CONFIG = {
      refEntry → the pre-fill id of the "Ambassador / Referral Code" question,
                 e.g. "entry.1234567890". Leave "" if that form has no such question. */
   forms: {
-    main:        { title: "Main Event Registration",     url: "", refEntry: "" },
+    main:        { title: "Fiesta Registration (Main Event)",
+                   url: "https://docs.google.com/forms/d/e/1FAIpQLScy08HXEK8w1wd0Htvarmhno6G_QZsC73XYX4LAVNF6n2bAWA/viewform", refEntry: "entry.28514730" },
     ambassador:  { title: "UET Ambassador Registration",
                    url: "https://docs.google.com/forms/d/e/1FAIpQLSe7JI-9uPDNm9J8Ld0EU9vb_Ue9FkkMP9RTFNWK_O8qOEEE9g/viewform", refEntry: "" },
     competitions:{ title: "Competitions Registration",
                    url: "https://docs.google.com/forms/d/e/1FAIpQLSd3re2BCc5EVtDaGyF-YU_rCcMvQ_nj7Zrxm9_GZuR_YsIsgQ/viewform", refEntry: "entry.1048051579" },
-    talent:      { title: "Talent Award Application",    url: "", refEntry: "" },
+    talent:      { title: "UET Talent Award 2026",
+                   url: "https://docs.google.com/forms/d/e/1FAIpQLSdIRaasilex_te8rO2ic9nO3je1uD41jpbV3U9Z_ggqW1bzPQ/viewform", refEntry: "entry.324524728" },
     stall:       { title: "Stall Booking",               url: "", refEntry: "" },
     sponsor:     { title: "Sponsorship Enquiry",         url: "", refEntry: "" },
   },
