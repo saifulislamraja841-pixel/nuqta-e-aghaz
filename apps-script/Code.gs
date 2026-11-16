@@ -24,6 +24,8 @@ const TABS = {
 const ANN_TAB = "Announcements";
 /* Your existing Google Forms (the id between /d/ and /edit in the form's edit link) */
 const FORM_IDS = {
+  main:         "1kJBEDmjI8OOd1b74eWh59VjPNrvVxfPeLBrMFS-tBLA",   // Fiesta (Participants) Registration
+  talent:       "1i0rWdSEtUtZt5hvKyZlXgEgXs21JVNTjF7j5u128geI",   // UET Talent Award 2026
   ambassador:   "1Bqs-XiIk80YuAV51vBtzQQLhhdT5dsLZ6K_C72IHBoY",   // UET Ambassador Registration
   competitions: "15u_eCT5mSdqM9g7YgKIjjf2ZcmDlgMiEm45PQS2LpZo",   // Competitions Form
 };
