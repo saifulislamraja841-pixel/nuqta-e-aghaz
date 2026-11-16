@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Portal · Nuqta-e-Aghaz</title>
+<link rel="icon" href="assets/favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css"><link rel="stylesheet" href="assets/app.css">
+</head>
+<body class="app">
+<div class="aurora"></div><canvas id="dots"></canvas><div class="grain"></div>
+
+<section class="login" id="login">
+  <form class="login-box" id="loginForm">
+    <a href="index.html"><img src="assets/logo-full.png" alt="Nuqta-e-Aghaz"></a>
+    <h2>My Portal</h2>
+    <p class="s">For attendees, competitors, talent-award applicants and ambassadors. Use the details you gave in your registration form.</p>
+    <div class="field"><label for="em">Registered email</label><input class="input" id="em" type="email" autocomplete="email" required></div>
+    <div class="field"><label for="ph">Last 4 digits of your phone number</label><input class="input" id="ph" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required></div>
+    <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+    <div class="err" id="loginErr"></div>
+    <p class="hint" id="loginHint">Not registered yet? <a href="index.html" style="color:var(--lilac)">Register on the main site</a>.</p>
+  </form>
+</section>
+
+<div class="container" id="app" hidden style="padding-bottom:70px">
+  <div class="portal-top">
+    <a href="index.html"><img src="assets/logo.png" alt="Nuqta-e-Aghaz"></a><span class="sp"></span>
+    <button class="btn btn-ghost btn-sm" id="refresh"><span data-icon="refresh"></span>Refresh</button>
+    <button class="btn btn-ghost btn-sm" id="logout"><span data-icon="logout"></span>Sign out</button>
+  </div>
+  <div class="banner-demo" id="demoBanner" hidden>⚠ This is a <b>sample portal</b>. It shows live data once the Apps Script URL is added to <code>config.js</code>.</div>
+
+  <div class="welcome">
+    <div class="hello"><span class="eyebrow">Assalam o Alaikum</span><h1 id="hName" style="margin-top:10px"></h1><p id="hSub"></p><div class="roles" id="roles"></div></div>
+    <div class="panel evcard"><h3>Nuqta-e-Aghaz 2026</h3><div class="sub" id="evMeta"></div><div class="countdown" id="cd"></div></div>
+  </div>
+
+  <div class="row r-1-1" id="mid"></div>
+
+  <div class="panel">
+    <div class="panel-head"><div><h3>Announcements for you</h3><div class="sub">Updates from the organising team</div></div><span class="badge" id="annCount"></span></div>
+    <div id="ann"></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="assets/core.js"></script>
+<script>
+(function(){
+  const N = Nuqta, C = N.C; let CRED = N.session.get("nuqta_portal");
+  N.hydrateIcons(); N.dots();
+  if (N.isDemo()) N.$("#loginHint").innerHTML = 'Demo mode: any email works. Try <b>ambassador@demo.pk</b> or <b>student@demo.pk</b> with 1234.';
+
+  async function load(){
+    const d = await N.api("portal", CRED);
+    if (!d.ok) throw new Error(d.message || "We couldn't find a registration with these details.");
+    render(d);
+  }
+  N.$("#loginForm").addEventListener("submit", async e=>{
+    e.preventDefault(); N.$("#loginErr").textContent = "";
+    CRED = { email: N.$("#em").value.trim().toLowerCase(), phone4: N.$("#ph").value.trim() };
+    const b = N.$("#loginForm button"); b.disabled = true; b.textContent = "Checking…";
+    try { await load(); N.session.set("nuqta_portal", CRED); show(); }
+    catch(err){ N.$("#loginErr").textContent = err.message; }
+    b.disabled = false; b.textContent = "Sign in";
+  });
+  const show = ()=>{ N.$("#login").hidden = true; N.$("#app").hidden = false; };
+  if (CRED) load().then(show).catch(()=>N.session.del("nuqta_portal"));
+  N.$("#logout").addEventListener("click", ()=>{ N.session.del("nuqta_portal"); location.reload(); });
+  N.$("#refresh").addEventListener("click", ()=>load().then(()=>N.toast("Updated")));
+
+  function render(d){
+    const R = d.roles, P = d.profile;
+    N.$("#demoBanner").hidden = !d.demo;
+    N.$("#hName").textContent = P.name || "Welcome";
+    N.$("#hSub").textContent = [P.university, P.email].filter(Boolean).join(" · ");
+    const roles = [];
+    if (R.main && R.main.registered) roles.push('<span class="badge ok">✓ Main-event pass</span>');
+    if (R.ambassador) roles.push(`<span class="badge gold">Ambassador · ${N.esc(R.ambassador.code)}</span>`);
+    (R.competitions||[]).forEach(c=>roles.push(`<span class="badge">${N.esc(c)}</span>`));
+    if (R.talent && R.talent.applied) roles.push('<span class="badge">Talent award applicant</span>');
+    if (R.stall) roles.push('<span class="badge">Stall exhibitor</span>');
+    N.$("#roles").innerHTML = roles.join("");
+    N.$("#evMeta").textContent = `${C.event.dateLabel} · ${C.event.timeLabel} · ${C.event.venue}`;
+    if (!N.$("#cd").innerHTML) N.countdown(N.$("#cd"), C.event.dateISO);
+
+    const item = (icon, title, sub, action)=>`<div class="ri"><span class="ic">${N.icon(icon)}</span><div><b>${title}</b><span>${sub}</span></div>${action||""}</div>`;
+    const done = '<span class="badge ok">Done</span>', go = k=>`<a class="btn btn-primary btn-sm" href="#" data-form="${k}">Register</a>`;
+    const regs = [
+      item("users","Main event pass", R.main && R.main.registered ? "Registered " + N.timeAgo(R.main.ts) : "Required to enter on event day", R.main && R.main.registered ? done : go("main")),
+      item("trophy","Competitions", (R.competitions||[]).length ? R.competitions.join(", ") : "Qirat, Naat, Debate, Calligraphy, Painting", (R.competitions||[]).length ? done : go("competitions")),
+      item("star","Talent Award", R.talent && R.talent.applied ? "Application received, under review" : "92%+ inter (1st year) or 3.70+ CGPA", R.talent && R.talent.applied ? done : go("talent")),
+    ];
+    let amb = "";
+    if (R.ambassador) {
+      const A = R.ambassador, link = N.siteBase() + "index.html?ref=" + encodeURIComponent(A.code);
+      const wa = "https://wa.me/?text=" + encodeURIComponent(`Join me at Nuqta-e-Aghaz on ${C.event.dateLabel} at ${C.event.venue}! Register here: ${link}`);
+      amb = `<div class="amb-card"><span class="eyebrow" style="color:var(--gold-soft)">Your ambassador code</span>
+        <div class="inline" style="justify-content:space-between;margin-top:8px"><span class="amb-code">${N.esc(A.code)}</span>${A.rank?`<span class="badge gold">Rank #${A.rank} of ${A.of}</span>`:""}</div>
+        <div class="linkbox"><input class="input" readonly value="${N.esc(link)}" id="refLink"><button class="btn btn-ghost btn-sm" id="cpy">${N.icon("copy")}Copy</button></div>
+        <div class="inline"><a class="btn btn-gold btn-sm" target="_blank" rel="noopener" href="${wa}">${N.icon("whatsapp")}Share on WhatsApp</a></div>
+        <div class="mstats"><div><b>${A.referrals.main}</b><span>Main event</span></div><div><b>${A.referrals.competitions}</b><span>Competitions</span></div><div><b>${A.referrals.talent}</b><span>Talent</span></div><div><b>${A.referrals.total}</b><span>Total</span></div></div></div>`;
+    } else {
+      amb = `<div class="panel"><h3>Become a campus ambassador</h3><div class="sub">Earn up to PKR 10,000, a Certificate of Excellence and awards by bringing your campus to Nuqta-e-Aghaz.</div><a class="btn btn-primary" href="#" data-form="ambassador">Apply as Ambassador</a></div>`;
+    }
+    N.$("#mid").innerHTML = `<div class="panel"><h3>Your registrations</h3><div class="sub">What you've signed up for</div><div class="reg">${regs.join("")}</div></div>${amb}`;
+    const c = N.$("#cpy"); c && c.addEventListener("click", ()=>N.copy(N.$("#refLink").value));
+
+    const list = [...(d.announcements||[])].sort((a,b)=>(b.pinned-a.pinned)||(new Date(b.ts)-new Date(a.ts)));
+    N.$("#annCount").textContent = list.length + " update" + (list.length===1?"":"s");
+    N.$("#ann").innerHTML = list.map(a=>`<div class="ann"><div class="h">${a.pinned?`<span class="badge gold">${N.icon("pinned")}Pinned</span>`:""}<b>${N.esc(a.title)}</b></div>
+      <p>${N.esc(a.message)}</p>${a.link?`<a href="${N.esc(a.link)}" target="_blank" rel="noopener" style="color:var(--lilac);font-size:13px">${N.esc(a.link)}</a>`:""}
+      <div class="m"><span class="badge">${N.esc(N.audienceLabel(a.audience).replace(/^Personal · .*/,"For you"))}</span>${N.timeAgo(a.ts)}</div></div>`).join("") || '<div class="empty">No announcements yet. Check back closer to the event.</div>';
+  }
+})();
+</script>
+</body>
+</html>

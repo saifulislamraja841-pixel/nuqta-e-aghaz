@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Team Dashboard · Nuqta-e-Aghaz</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css"><link rel="stylesheet" href="assets/app.css">
+</head>
+<body class="app">
+<div class="aurora"></div><div class="grain"></div>
+
+<!-- LOGIN -->
+<section class="login" id="login">
+  <form class="login-box" id="loginForm">
+    <img src="assets/logo-full.png" alt="Nuqta-e-Aghaz">
+    <h2>Team Dashboard</h2>
+    <p class="s">Organisers only. Enter the admin key set in your Apps Script.</p>
+    <div class="field"><label for="key">Admin key</label><input class="input" id="key" type="password" autocomplete="current-password" required></div>
+    <button class="btn btn-primary btn-block" type="submit">Open dashboard</button>
+    <div class="err" id="loginErr"></div>
+    <p class="hint" id="loginHint"></p>
+  </form>
+</section>
+
+<!-- APP -->
+<div class="shell" id="app" hidden>
+  <aside class="side">
+    <div class="brand"><a href="index.html"><img src="assets/logo.png" alt="Nuqta-e-Aghaz"></a><small>Team dashboard</small></div>
+    <a class="tab active" data-view="overview" data-icon="grid">Overview</a>
+    <a class="tab" data-view="ambassadors" data-icon="users">Ambassadors</a>
+    <a class="tab" data-view="competitions" data-icon="trophy">Competitions & Awards</a>
+    <a class="tab" data-view="announce" data-icon="bell">Announcements</a>
+    <div class="grow"></div>
+    <div class="mini" id="syncInfo"></div>
+    <a class="tab" id="logout" data-icon="logout">Sign out</a>
+  </aside>
+
+  <main class="main">
+    <div class="banner-demo" id="demoBanner" hidden>⚠ Showing <b>sample data</b>. Add your Apps Script URL in <code>config.js</code> to see live registrations (see SETUP.md).</div>
+
+    <!-- OVERVIEW -->
+    <section class="view active" id="v-overview">
+      <div class="topbar"><h1>Overview</h1><span class="meta" id="updated"></span><button class="btn btn-ghost btn-sm" id="refresh"><span data-icon="refresh"></span>Refresh</button></div>
+      <div class="kpis" id="kpis"></div>
+      <div class="row r-2-1">
+        <div class="panel">
+          <div class="panel-head"><div><h3 id="lineTitle">Main-event registrations per day</h3><div class="sub">Last 30 days · hover for daily count</div></div>
+            <div class="inline"><button class="btn btn-sm btn-primary" data-series="main">Main event</button><button class="btn btn-sm btn-ghost" data-series="all">All forms</button></div></div>
+          <div class="chart" id="lineChart"></div>
+        </div>
+        <div class="panel">
+          <h3>Who also registered for the main event</h3><div class="sub">Matched by email address across forms</div>
+          <div class="funnel" id="funnel"></div>
+        </div>
+      </div>
+      <div class="row r-1-1">
+        <div class="panel"><h3>Main-event registrations by university</h3><div class="sub">Top institutions</div><div class="hbars" id="uniBars"></div></div>
+        <div class="panel"><h3>Latest registrations</h3><div class="sub">Across all forms</div><div class="feed" id="recent"></div></div>
+      </div>
+    </section>
+
+    <!-- AMBASSADORS -->
+    <section class="view" id="v-ambassadors">
+      <div class="topbar"><h1>Ambassadors</h1>
+        <input class="input" id="lbSearch" placeholder="Search name, code or university" style="max-width:280px">
+        <button class="btn btn-ghost btn-sm" id="lbCsv"><span data-icon="download"></span>Export CSV</button></div>
+      <div class="kpis" id="ambKpis" style="grid-template-columns:repeat(4,1fr)"></div>
+      <div class="panel">
+        <h3>Referral leaderboard</h3><div class="sub">Registrations that entered each ambassador's code · click a column to sort</div>
+        <div class="tbl-wrap"><table class="t" id="lbTable"></table></div>
+      </div>
+    </section>
+
+    <!-- COMPETITIONS -->
+    <section class="view" id="v-competitions">
+      <div class="topbar"><h1>Competitions & Talent Award</h1></div>
+      <div class="kpis" id="compKpis" style="grid-template-columns:repeat(4,1fr)"></div>
+      <div class="row r-1-1">
+        <div class="panel"><h3>Entries by competition</h3><div class="sub">One person can enter several competitions</div><div class="hbars" id="compBars"></div></div>
+        <div class="panel"><h3>Conversion to main event</h3><div class="sub">Share of each group holding a main-event pass</div><div class="funnel" id="funnel2"></div></div>
+      </div>
+    </section>
+
+    <!-- ANNOUNCEMENTS -->
+    <section class="view" id="v-announce">
+      <div class="topbar"><h1>Announcements</h1></div>
+      <div class="row r-1-2">
+        <form class="panel" id="annForm">
+          <h3>Send to portal</h3><div class="sub">Appears instantly in the portal of everyone in the audience</div>
+          <div class="field"><label>Audience</label><select class="select" id="aAud"></select></div>
+          <div class="field" id="aEmailWrap" hidden><label>Recipient email</label><input class="input" id="aEmail" type="email" placeholder="student@example.com"></div>
+          <div class="field"><label>Title</label><input class="input" id="aTitle" required maxlength="120" placeholder="e.g. Reporting time: 9:30 AM"></div>
+          <div class="field"><label>Message</label><textarea class="textarea" id="aMsg" required placeholder="Write the details…"></textarea></div>
+          <div class="field"><label>Link (optional)</label><input class="input" id="aLink" type="url" placeholder="https://…"></div>
+          <label class="inline" style="font-size:13px;color:var(--muted);margin-bottom:16px"><input type="checkbox" id="aPin"> Pin to top</label>
+          <button class="btn btn-primary btn-block" type="submit"><span data-icon="send"></span>Publish announcement</button>
+        </form>
+        <div class="panel"><h3>Published</h3><div class="sub">Newest first</div><div id="annList"></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="config.js"></script>
+<script src="assets/core.js"></script>
+<script>
+(function(){
+  const N = Nuqta; let KEY = N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
+  N.hydrateIcons();
+  N.$("#loginHint").textContent = N.isDemo() ? "Demo mode: no backend connected yet, so any key opens sample data." : "";
+
+  async function load(){
+    DATA = await N.api("stats", { key: KEY });
+    render();
+  }
+  N.$("#loginForm").addEventListener("submit", async e=>{
+    e.preventDefault(); KEY = N.$("#key").value.trim(); N.$("#loginErr").textContent = "";
+    try { await load(); N.session.set("nuqta_admin", KEY); enter(); }
+    catch(err){ N.$("#loginErr").textContent = /key/i.test(err.message) ? "That key is not correct." : "Could not reach the backend: " + err.message; }
+  });
+  function enter(){ N.$("#login").hidden = true; N.$("#app").hidden = false; N.$("#demoBanner").hidden = !DATA.demo; }
+  N.$("#logout").addEventListener("click", ()=>{ N.session.del("nuqta_admin"); location.reload(); });
+  N.$("#refresh").addEventListener("click", ()=>load().then(()=>N.toast("Updated")));
+  setInterval(()=>{ if (KEY && !document.hidden) load().catch(()=>{}); }, 60000);
+  if (KEY) load().then(enter).catch(()=>N.session.del("nuqta_admin"));
+
+  N.$$(".side a.tab[data-view]").forEach(t=>t.addEventListener("click", ()=>{
+    N.$$(".side a.tab").forEach(x=>x.classList.remove("active")); t.classList.add("active");
+    N.$$(".view").forEach(v=>v.classList.toggle("active", v.id === "v-" + t.dataset.view));
+    scrollTo({top:0}); if (t.dataset.view === "overview") drawLine();
+  }));
+
+  const pct = (a,b)=> b ? Math.round(a/b*100) : 0;
+  const kpi = (icon,lbl,val,foot,hero)=>`<div class="kpi${hero?" kpi-hi":""}"><div class="lbl">${N.icon(icon)}${lbl}</div><b>${N.fmt(val)}</b><div class="kpi-foot">${foot||"&nbsp;"}</div></div>`;
+  const hbars = (el, rows)=>{ const max = Math.max(1,...rows.map(r=>r.count));
+    el.innerHTML = rows.map(r=>`<div class="hb" title="${N.esc(r.name)}: ${N.fmt(r.count)}"><span class="n">${N.esc(r.name)}</span><span class="track"><i data-w="${r.count/max*100}"></i></span><span class="v">${N.fmt(r.count)}</span></div>`).join("") || '<div class="empty">No data yet</div>';
+    requestAnimationFrame(()=>N.$$("i[data-w]", el).forEach(i=>i.style.width = i.dataset.w + "%")); };
+  const funnel = (el)=>{ const c = DATA.crossover, rows = [["Ambassadors",c.ambassadors],["Competition participants",c.competitions],["Talent award applicants",c.talent],["Stall exhibitors",c.stalls]];
+    el.innerHTML = rows.filter(r=>r[1]).map(([n,v])=>`<div class="fn"><div class="top"><span>${n}</span><b>${N.fmt(v.inMain)} / ${N.fmt(v.total)} · ${pct(v.inMain,v.total)}%</b></div><div class="bar"><i data-w="${pct(v.inMain,v.total)}"></i></div></div>`).join("");
+    requestAnimationFrame(()=>N.$$("i[data-w]", el).forEach(i=>i.style.width = i.dataset.w + "%")); };
+
+  function render(){
+    const T = DATA.totals;
+    N.$("#updated").textContent = "Updated " + new Date(DATA.generatedAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+    N.$("#syncInfo").textContent = DATA.demo ? "Sample data" : "Live · Google Sheets · auto-refresh 60s";
+    N.$("#kpis").innerHTML =
+      kpi("users","Main event", T.main, "Registered for the main event", true) +
+      kpi("star","Ambassadors", T.ambassadors, "Applications received") +
+      kpi("link","Via ambassadors", T.referred, pct(T.referred,T.main) + "% of main-event sign-ups") +
+      kpi("trophy","Competitors", T.competitionPeople, N.fmt(T.competitionEntries) + " entries in total") +
+      kpi("bulb","Talent award", T.talent, "Applications") +
+      kpi("store","Stalls", T.stalls, "Booking requests");
+    drawLine(); funnel(N.$("#funnel")); funnel(N.$("#funnel2"));
+    hbars(N.$("#uniBars"), DATA.universities.slice(0,8));
+    hbars(N.$("#compBars"), DATA.competitions);
+    N.$("#recent").innerHTML = DATA.recent.map(r=>`<div class="it"><span class="dot"></span><div><b style="font-weight:500">${N.esc(r.name)}</b> <span>· ${N.esc(r.type)}${r.university?" · "+N.esc(r.university):""}</span>${r.ref?` <span class="badge" style="margin-left:4px">${N.esc(r.ref)}</span>`:""}</div><span>${N.timeAgo(r.ts)}</span></div>`).join("") || '<div class="empty">No registrations yet</div>';
+
+    const lb = DATA.leaderboard, active = lb.filter(a=>a.total>0).length;
+    N.$("#ambKpis").innerHTML = kpi("users","Ambassadors",T.ambassadors,"Applications",true) + kpi("star","Active",active,"At least one referral") +
+      kpi("link","Referred sign-ups",lb.reduce((s,a)=>s+a.total,0),"Across all forms") + kpi("bell","Unmatched codes",DATA.invalidRefs||0,"Typed codes that match no ambassador");
+    N.$("#compKpis").innerHTML = kpi("trophy","Competitors",T.competitionPeople,"Unique people",true) + kpi("chart","Entries",T.competitionEntries,"Across 5 competitions") +
+      kpi("bulb","Talent award",T.talent,"Applications") + kpi("users","Competitors in main event",DATA.crossover.competitions.inMain, pct(DATA.crossover.competitions.inMain,DATA.crossover.competitions.total)+"% converted");
+    renderTable(); renderAnn(DATA.announcements);
+  }
+
+  /* line chart: one series at a time, crosshair + tooltip */
+  function drawLine(){
+    if (!DATA) return; const el = N.$("#lineChart"); const pts = DATA.timeline.map(d=>({d:d.date, v:d[series]}));
+    N.$("#lineTitle").textContent = series === "main" ? "Main-event registrations per day" : "All registrations per day (every form)";
+    const W = Math.max(320, el.clientWidth || 700), H = 260, m = {l:36,r:12,t:14,b:28};
+    const max = Math.max(5, ...pts.map(p=>p.v)), step = Math.pow(10, Math.floor(Math.log10(max))), top = Math.ceil(max/step)*step;
+    const x = i => m.l + i*(W-m.l-m.r)/(pts.length-1), y = v => H-m.b - v/top*(H-m.t-m.b);
+    const path = pts.map((p,i)=>(i?"L":"M")+x(i).toFixed(1)+","+y(p.v).toFixed(1)).join("");
+    const ticks = [0,.25,.5,.75,1].map(f=>Math.round(top*f));
+    const xl = pts.map((p,i)=>i%6===0||i===pts.length-1 ? `<text x="${x(i)}" y="${H-8}" text-anchor="middle">${new Date(p.d).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</text>`:"").join("");
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${N.$("#lineTitle").textContent}">
+      <defs><linearGradient id="ar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#a65cff" stop-opacity=".28"/><stop offset="1" stop-color="#a65cff" stop-opacity="0"/></linearGradient></defs>
+      <g class="grid">${ticks.map(t=>`<line x1="${m.l}" x2="${W-m.r}" y1="${y(t)}" y2="${y(t)}"/>`).join("")}</g>
+      <g class="axis">${ticks.map(t=>`<text x="${m.l-8}" y="${y(t)+4}" text-anchor="end">${t}</text>`).join("")}${xl}</g>
+      <path d="${path}L${x(pts.length-1)},${y(0)}L${x(0)},${y(0)}Z" fill="url(#ar)"/>
+      <path d="${path}" fill="none" stroke="#b46cff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <line id="xh" y1="${m.t}" y2="${H-m.b}" stroke="rgba(231,219,255,.35)" stroke-dasharray="3 3" opacity="0"/>
+      <circle id="xc" r="5" fill="#b46cff" stroke="#100d33" stroke-width="2" opacity="0"/>
+      <rect x="${m.l}" y="0" width="${W-m.l-m.r}" height="${H}" fill="transparent" id="hit"/></svg><div class="tip" id="tip"></div>`;
+    const svg = N.$("svg", el), tip = N.$("#tip", el), xh = N.$("#xh", el), xc = N.$("#xc", el);
+    N.$("#hit", el).addEventListener("pointermove", e=>{
+      const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
+      const i = Math.max(0, Math.min(pts.length-1, Math.round((px - m.l) / ((W-m.l-m.r)/(pts.length-1)))));
+      xh.setAttribute("x1", x(i)); xh.setAttribute("x2", x(i)); xh.setAttribute("opacity", 1);
+      xc.setAttribute("cx", x(i)); xc.setAttribute("cy", y(pts[i].v)); xc.setAttribute("opacity", 1);
+      tip.innerHTML = `<b>${pts[i].v}</b>${new Date(pts[i].d).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}`;
+      tip.style.left = x(i) * r.width / W + "px"; tip.style.top = y(pts[i].v) * r.height / H + "px"; tip.style.opacity = 1;
+    });
+    N.$("#hit", el).addEventListener("pointerleave", ()=>{ tip.style.opacity = 0; xh.setAttribute("opacity",0); xc.setAttribute("opacity",0); });
+  }
+  N.$$("[data-series]").forEach(b=>b.addEventListener("click", ()=>{ series = b.dataset.series;
+    N.$$("[data-series]").forEach(x=>x.className = "btn btn-sm " + (x === b ? "btn-primary" : "btn-ghost")); drawLine(); }));
+  addEventListener("resize", ()=>{ clearTimeout(drawLine._t); drawLine._t = setTimeout(drawLine, 150); });
+
+  /* leaderboard table */
+  const cols = [["rank","#",1],["code","Code"],["name","Name"],["university","University"],["main","Main event",1],["competitions","Competitions",1],["talent","Talent",1],["total","Total",1]];
+  function renderTable(){
+    const q = N.$("#lbSearch").value.toLowerCase();
+    let rows = DATA.leaderboard.map((a,i)=>({...a, rank:i+1}));
+    if (q) rows = rows.filter(a=>(a.name+a.code+a.university).toLowerCase().includes(q));
+    rows.sort((a,b)=> (typeof a[sortKey] === "number" ? a[sortKey]-b[sortKey] : String(a[sortKey]).localeCompare(b[sortKey])) * sortDir);
+    N.$("#lbTable").innerHTML = `<thead><tr>${cols.map(c=>`<th class="${c[2]?"num":""}" data-k="${c[0]}">${c[1]}${sortKey===c[0]?(sortDir>0?" ↑":" ↓"):""}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map(a=>`<tr><td class="num">${a.rank<=3?`<span class="rank r${a.rank}" style="display:inline-grid;width:24px;height:24px;font-size:11px">${a.rank}</span>`:a.rank}</td><td class="code">${N.esc(a.code)}</td><td>${N.esc(a.name)}</td><td style="color:var(--muted)">${N.esc(a.university)}</td><td class="num">${a.main}</td><td class="num">${a.competitions}</td><td class="num">${a.talent}</td><td class="num"><b>${a.total}</b></td></tr>`).join("") || `<tr><td colspan="8" class="empty">No ambassadors match.</td></tr>`}</tbody>`;
+    N.$$("#lbTable th").forEach(th=>th.addEventListener("click", ()=>{ const k = th.dataset.k; sortDir = sortKey === k ? -sortDir : (k==="rank"?1:-1); sortKey = k; renderTable(); }));
+  }
+  N.$("#lbSearch").addEventListener("input", renderTable);
+  N.$("#lbCsv").addEventListener("click", ()=>{
+    const rows = [["Rank","Code","Name","University","Main event","Competitions","Talent","Total"], ...DATA.leaderboard.map((a,i)=>[i+1,a.code,a.name,a.university,a.main,a.competitions,a.talent,a.total])];
+    const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download = "nuqta-ambassador-leaderboard.csv"; a.click();
+  });
+
+  /* announcements */
+  N.$("#aAud").innerHTML = Object.entries(N.AUDIENCES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("") + `<option value="email">One person (by email)</option>`;
+  N.$("#aAud").addEventListener("change", e=>N.$("#aEmailWrap").hidden = e.target.value !== "email");
+  function renderAnn(list){
+    list = [...(list||[])].sort((a,b)=>(b.pinned-a.pinned) || (new Date(b.ts)-new Date(a.ts)));
+    N.$("#annList").innerHTML = list.map(a=>`<div class="ann"><div class="h">${a.pinned?`<span class="badge gold">${N.icon("pinned")}Pinned</span>`:""}<b>${N.esc(a.title)}</b>
+      <button class="icon-btn" data-del="${N.esc(a.id)}" title="Delete">${N.icon("trash")}</button></div><p>${N.esc(a.message)}</p>
+      ${a.link?`<a href="${N.esc(a.link)}" target="_blank" rel="noopener" style="color:var(--lilac);font-size:13px">${N.esc(a.link)}</a>`:""}
+      <div class="m"><span class="badge">${N.esc(N.audienceLabel(a.audience))}</span>${N.timeAgo(a.ts)}</div></div>`).join("") || '<div class="empty">Nothing published yet.</div>';
+    N.$$("[data-del]").forEach(b=>b.addEventListener("click", async ()=>{
+      if (!confirm("Delete this announcement from every portal?")) return;
+      const r = await N.post({action:"deleteAnnouncement", key:KEY, id:b.dataset.del}); DATA.announcements = r.announcements; renderAnn(r.announcements); N.toast("Deleted");
+    }));
+  }
+  N.$("#annForm").addEventListener("submit", async e=>{
+    e.preventDefault(); const aud = N.$("#aAud").value;
+    if (aud === "email" && !N.$("#aEmail").value) return N.toast("Add the recipient's email");
+    const btn = N.$("#annForm button[type=submit]"); btn.disabled = true;
+    try {
+      const r = await N.post({action:"announce", key:KEY, title:N.$("#aTitle").value.trim(), message:N.$("#aMsg").value.trim(), link:N.$("#aLink").value.trim(),
+        audience: aud === "email" ? "email:" + N.$("#aEmail").value.trim().toLowerCase() : aud, pinned:N.$("#aPin").checked});
+      DATA.announcements = r.announcements; renderAnn(r.announcements); e.target.reset(); N.$("#aEmailWrap").hidden = true; N.toast("Published to portals");
+    } catch(err){ N.toast("Could not publish: " + err.message); }
+    btn.disabled = false;
+  });
+})();
+</script>
+</body>
+</html>
