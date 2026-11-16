@@ -324,3 +324,24 @@ footer{padding:70px 0 40px;border-top:1px solid var(--line);margin-top:100px}
   .foot{grid-template-columns:1fr}.copy{flex-direction:column;gap:8px}
   .modal{padding:0}.modal-box{height:100vh;border-radius:0}
 }
+
+/* ---------- multi-page additions ---------- */
+.page-hero{padding:150px 0 30px;text-align:center;position:relative}
+.page-hero h1{font-size:clamp(40px,6vw,76px);margin:14px auto 0;max-width:15ch}
+.page-hero .lead{margin:18px auto 0;max-width:62ch}
+.section.page-first{padding-top:150px}
+.amb.amb-single{grid-template-columns:1fr;max-width:860px;margin:0 auto}
+.amb-single .steps,.amb-single .resp,.amb-single .hero-actions{justify-content:center}
+.sub-h{font-family:var(--serif);font-size:28px;margin:34px 0 14px;text-align:center}
+.info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:36px}
+.info-grid .card{padding:24px}
+.info-grid h4{margin:0 0 8px;font-size:16px}
+.info-grid p{margin:0;color:var(--muted);font-size:14px}
+.info-grid .socials{margin-top:4px}
+.explore a.card{display:block;color:inherit;text-decoration:none}
+.explore a.card:hover h3{color:var(--lilac-soft)}
+@media (max-width:900px){.info-grid{grid-template-columns:1fr}.page-hero{padding-top:120px}.section.page-first{padding-top:120px}}
+.comp-wrap.six{grid-template-columns:repeat(3,1fr)}
+.amb-single .steps{max-width:640px;margin-left:auto;margin-right:auto}
+@media (max-width:900px){.comp-wrap.six{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:560px){.ref-banner{left:16px;right:16px;width:auto;max-width:none;translate:none;border-radius:16px;justify-content:center;flex-wrap:wrap;text-align:center;font-size:13px}}

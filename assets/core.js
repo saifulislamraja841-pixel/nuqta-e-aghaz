@@ -82,7 +82,12 @@
   };
   (function captureRef() {
     const q = new URLSearchParams(location.search).get("ref");
-    if (q && /^[A-Za-z0-9-]{3,20}$/.test(q)) N.store.set("nuqta_ref", { code: q.toUpperCase(), exp: Date.now() + 30 * 864e5 });
+    if (q && /^[A-Za-z0-9-]{2,20}$/.test(q)) {
+      let code = q.toUpperCase();
+      const m = code.match(/^(?:NEA|NA|NE|N)?-?0*(\d{1,4})$/);   // nea7, NA-07, 7 → NEA07
+      if (m) code = "NEA" + m[1].padStart(2, "0");
+      N.store.set("nuqta_ref", { code, exp: Date.now() + 30 * 864e5 });
+    }
   })();
 
   /* ---------- Google Form modal ---------- */
@@ -155,17 +160,17 @@
   const FN = ["Ali", "Hamza", "Ayesha", "Fatima", "Usman", "Zainab", "Bilal", "Hira", "Saad", "Maryam", "Abdullah", "Iqra", "Talha", "Noor", "Huzaifa", "Areeba", "Hassan", "Mahnoor", "Umar", "Sana"];
   const LN = ["Ahmed", "Khan", "Raza", "Malik", "Iqbal", "Butt", "Sheikh", "Chaudhry", "Qureshi", "Javed", "Aslam", "Mirza"];
   const UNI = ["UET Lahore", "UET KSK Campus", "Punjab University", "FAST Lahore", "LUMS", "COMSATS Lahore", "GCU Lahore", "UMT", "ITU", "UCP"];
-  const COMPS = ["Qirat", "Naat", "Debate", "Calligraphy", "Painting"];
+  const COMPS = ["Qirat", "Naat", "Urdu Debate", "English Debate", "Painting", "Calligraphy"];
   const demoAnnouncements = () => N.store.get("nuqta_demo_ann") || [
     { id: "a3", ts: new Date(Date.now() - 3 * 3600e3).toISOString(), title: "Early-bird closes 20 November", message: "Register for the main event before 20 November to get 33% off the PKR 1,500 pass. Share your ambassador link today!", audience: "all", link: "", pinned: true },
     { id: "a2", ts: new Date(Date.now() - 26 * 3600e3).toISOString(), title: "Ambassador briefing — Thursday 5 PM", message: "All campus ambassadors: online briefing on Thursday at 5:00 PM. You'll get your poster kit and leaderboard rules.", audience: "ambassadors", link: "", pinned: false },
-    { id: "a1", ts: new Date(Date.now() - 3 * 86400e3).toISOString(), title: "Competition rules published", message: "Rules and time limits for Qirat, Naat, Debate, Calligraphy and Painting are now available. Debate topics will be shared 48 hours before the event.", audience: "competitors", link: "", pinned: false },
+    { id: "a1", ts: new Date(Date.now() - 3 * 86400e3).toISOString(), title: "Competition rules published", message: "Rules and time limits for Qirat, Naat, Urdu & English Debate, Painting and Calligraphy are now available. Debate topics will be shared 48 hours before the event.", audience: "competitors", link: "", pinned: false },
   ];
   N.demo = async (action, params) => {
     await new Promise((r) => setTimeout(r, 350));
     seed = 7;
     const ambassadors = Array.from({ length: 112 }, (_, i) => ({
-      code: "NA-" + String(i + 1).padStart(3, "0"), name: pick(FN) + " " + pick(LN), university: pick(UNI),
+      code: "NEA" + String(i + 1).padStart(2, "0"), name: pick(FN) + " " + pick(LN), university: pick(UNI),
     }));
     const lb = ambassadors.map((a) => {
       const main = Math.floor(Math.pow(rnd(), 1.6) * 17), comp = Math.floor(rnd() * main * 0.5), tal = Math.floor(rnd() * 4);
@@ -185,7 +190,7 @@
         cum += main; timeline.push({ date, main, all: Math.round(main * (1.35 + rnd() * 0.3)) });
       }
       const mainTotal = cum, referred = lb.reduce((s, a) => s + a.main, 0);
-      const compCounts = COMPS.map((n, i) => ({ name: n, count: [168, 214, 147, 96, 121][i] }));
+      const compCounts = COMPS.map((n, i) => ({ name: n, count: [168, 214, 91, 76, 121, 96][i] }));
       const compEntries = compCounts.reduce((s, c) => s + c.count, 0);
       const recent = Array.from({ length: 10 }, (_, i) => ({
         ts: new Date(Date.now() - (i * 37 + rnd() * 30) * 60e3).toISOString(), name: pick(FN) + " " + pick(LN),
@@ -211,7 +216,7 @@
         roles: {
           main: { registered: true, ts: new Date(Date.now() - 5 * 864e5).toISOString() },
           ambassador: isAmb ? { code: me.code, referrals: { main: me.main, competitions: me.competitions, talent: me.talent, total: me.total }, rank: 7, of: lb.length } : null,
-          competitions: ["Debate", "Calligraphy"], talent: { applied: !isAmb }, stall: null,
+          competitions: ["Urdu Debate", "Calligraphy"], talent: { applied: !isAmb }, stall: null,
         },
         announcements: demoAnnouncements().filter((a) => ["all", "attendees", "competitors", isAmb ? "ambassadors" : "talent"].includes(a.audience)),
       };
