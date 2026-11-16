@@ -11,20 +11,16 @@ The site uses your **existing** Google Forms. Nothing new is created, and all ol
 
 The ambassador code is pre-filled in the Competitions, Fiesta and Talent forms when a student arrives through a referral link. Stall and Sponsor buttons show "Registration opens shortly" until you add their form links in `config.js`.
 
-## 1. One spreadsheet for both forms (needs edit access to the forms)
-1. Open the **Ambassador** form → **Responses** → **Link to Sheets** → **Create a new spreadsheet**. Name it `Nuqta-e-Aghaz Master`.
-2. Do the same for the **Competitions**, **Fiesta Registration** and **Talent Award** forms, but choose **Select existing spreadsheet** → `Nuqta-e-Aghaz Master`.
-   Google copies **all previous responses** into the sheet, so old registrations are included.
+## 1. Backend (Apps Script)
+Responses are read **directly from the 4 forms** (all old and new responses), so the forms' existing response sheets are left untouched. The account running the script must be an **editor** of all 4 forms.
+1. Create a new Google Sheet (e.g. `Nuqta-e-Aghaz Data`) → **Extensions → Apps Script**. Replace `Code.gs` with `apps-script/Code.gs`.
+2. Set `ADMIN_KEY` at the top to a long password (the dashboard stays locked while it is the placeholder).
+3. Run `setup` once and allow the permissions. It creates the **Ambassador Codes** tab (Email · Name · Code · Status), gives every ambassador a code in sign-up order (`NEA01`, `NEA02` …) and installs a trigger on each form.
+   - Change a code in that tab to override it; write `rejected` in Status to remove someone.
+   - Run `emailExistingAmbassadors` once if you want everyone emailed their code and link.
+4. **Deploy → New deployment → Web app** · Execute as **Me** · Access **Anyone** → copy the `/exec` URL.
 
-## 2. Backend (Apps Script)
-1. In the spreadsheet: **Extensions → Apps Script**. Replace everything in `Code.gs` with `apps-script/Code.gs` from this repo.
-2. At the top, set `ADMIN_KEY` to a long password of your own (the dashboard stays locked while it is the placeholder).
-3. Select `setup` → **Run** → allow the permissions. It renames the four response tabs to `Main Event`, `Ambassadors`, `Competitions` and `Talent Award`, gives every ambassador a code (`NEA01`, `NEA02` …) in an **Ambassador Code** column, and installs the trigger that codes and emails new ambassadors.
-   - If you already gave ambassadors codes, type them in the **Ambassador Code** column first; `setup` only fills empty cells.
-   - To email every existing ambassador their code and link, run `emailExistingAmbassadors` once.
-4. **Deploy → New deployment → Web app** · Execute as **Me** · Who has access **Anyone** → copy the URL ending in `/exec`.
-
-## 3. Site
+## 2. Site
 Paste the `/exec` URL into `scriptUrl` in `config.js`, commit and push. The VPS pulls from GitHub.
 
 ## Privacy
