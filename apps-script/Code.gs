@@ -12,8 +12,7 @@ const ADMIN_KEY = "change-this-to-a-long-secret";        // password for the tea
 const SITE_URL  = "https://www.nuqtaeaghaz.org/";        // where index.html is hosted (ends with /)
 const SEND_AMBASSADOR_EMAIL = true;                       // email new ambassadors their code + link
 
-/* Names of the response tabs inside the master spreadsheet.
-   setup() finds the tabs linked to FORM_IDS below and renames them for you. */
+/* Labels for each form (used in the dashboard) */
 const TABS = {
   main:        "Main Event",
   ambassador:  "Ambassadors",
@@ -54,47 +53,31 @@ const COL = {
 };
 
 /* -------------------- one-time setup -------------------- */
+/* Responses are read straight from the Google Forms (all old + new ones).
+   The spreadsheet this script lives in only keeps ambassador codes and announcements,
+   so the forms' own response sheets are never touched. */
 function setup() {
-  const ss = SpreadsheetApp.getActive();
-  let ann = ss.getSheetByName(ANN_TAB);
-  if (!ann) {
-    ann = ss.insertSheet(ANN_TAB);
-    ann.appendRow(["ID", "Timestamp", "Title", "Message", "Audience", "Link", "Pinned"]);
-    ann.setFrozenRows(1);
-  }
-  linkFormTabs_();
-  Object.values(TABS).forEach(t => { if (!ss.getSheetByName(t)) Logger.log("ℹ Tab not found (fine if you don't use this form yet): " + t); });
+  annSheet_(); codeSheet_();
   assignAmbassadorCodes_(false);
-  ScriptApp.getProjectTriggers().forEach(tr => { if (tr.getHandlerFunction() === "onAnySubmit") ScriptApp.deleteTrigger(tr); });
-  ScriptApp.newTrigger("onAnySubmit").forSpreadsheet(ss).onFormSubmit().create();
+  ScriptApp.getProjectTriggers().forEach(tr => ScriptApp.deleteTrigger(tr));
+  Object.keys(FORM_IDS).forEach(k => {
+    ScriptApp.newTrigger("onAnySubmit").forForm(FORM_IDS[k]).onFormSubmit().create();
+    Logger.log("✓ " + TABS[k] + ": " + FormApp.openById(FORM_IDS[k]).getResponses().length + " responses");
+  });
   Logger.log("✅ Setup complete. Now Deploy → New deployment → Web app.");
 }
 
 /* Runs on every form submission (installed by setup) */
 function onAnySubmit(e) {
-  const sheet = e && e.range ? e.range.getSheet() : null;
-  if (sheet && sheet.getName() === TABS.ambassador) assignAmbassadorCodes_(SEND_AMBASSADOR_EMAIL);
-  CacheService.getScriptCache().remove("stats");
-}
-
-/* Finds the response tab of each form in FORM_IDS and renames it to the TABS name */
-function linkFormTabs_() {
-  const ss = SpreadsheetApp.getActive();
-  Object.keys(FORM_IDS).forEach(k => {
-    if (ss.getSheetByName(TABS[k])) return;
-    const sh = ss.getSheets().find(s => { const u = s.getFormUrl(); return u && u.indexOf(FORM_IDS[k]) >= 0; })
-      || ss.getSheets().find(s => { const u = s.getFormUrl(); return u && FormApp.openByUrl(u).getId() === FORM_IDS[k]; });
-    if (sh) { sh.setName(TABS[k]); Logger.log("✓ " + TABS[k] + " tab linked"); }
-    else Logger.log("⚠ No tab linked to the " + TABS[k] + " form yet. In the form: Responses → Link to Sheets → Select existing spreadsheet → this one.");
-  });
+  const cache = CacheService.getScriptCache();
+  cache.removeAll(["stats"].concat(Object.keys(TABS).map(k => "rows_" + k)));
+  if (e && e.source && e.source.getId() === FORM_IDS.ambassador) assignAmbassadorCodes_(SEND_AMBASSADOR_EMAIL);
 }
 
 /* Run this ONCE by hand if you want every existing ambassador emailed their code + link */
-function emailExistingAmbassadors() { assignAmbassadorCodes_(false); emailCodes_(true); }
-function emailCodes_(all) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(TABS.ambassador);
-  if (!sh || sh.getLastRow() < 2) return;
-  readTab_("ambassador").forEach(a => { if (a.code && a.email) sendCodeEmail_(a.email, a.name, a.code); });
+function emailExistingAmbassadors() {
+  assignAmbassadorCodes_(false);
+  codeRows_().forEach(c => { if (c.email && c.code) sendCodeEmail_(c.email, c.name, c.code); });
 }
 function sendCodeEmail_(to, name, code) {
   try {
@@ -110,45 +93,68 @@ function sendCodeEmail_(to, name, code) {
   } catch (err) { Logger.log("Email failed: " + err); }
 }
 
-/* Gives every ambassador row a code like NEA07 in an "Ambassador Code" column */
+/* -------------------- ambassador codes -------------------- */
+/* "Ambassador Codes" tab: Email | Name | Code | Status. Edit a Code to override it,
+   or write "rejected" in Status to remove someone. New ambassadors get the next number. */
+const CODE_TAB = "Ambassador Codes";
+function codeSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(CODE_TAB);
+  if (!sh) { sh = ss.insertSheet(CODE_TAB); sh.appendRow(["Email", "Name", "Code", "Status", "Registered"]); sh.setFrozenRows(1); }
+  return sh;
+}
+function codeRows_() {
+  const v = codeSheet_().getDataRange().getValues().slice(1);
+  return v.filter(r => r[0]).map(r => ({ email: String(r[0]).trim().toLowerCase(), name: String(r[1] || ""), code: normCode_(r[2]), status: String(r[3] || "").toLowerCase() }));
+}
 function assignAmbassadorCodes_(sendEmail) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(TABS.ambassador);
-  if (!sh || sh.getLastRow() < 2) return;
-  let head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  let ci = head.findIndex(h => COL.code.test(String(h)));
-  if (ci < 0) { ci = head.length; sh.getRange(1, ci + 1).setValue("Ambassador Code"); head.push("Ambassador Code"); }
-  const ei = head.findIndex(h => COL.email.test(String(h)));
-  const ni = head.findIndex(h => COL.name.test(String(h)));
-  const n = sh.getLastRow() - 1;
-  const codes = sh.getRange(2, ci + 1, n, 1).getValues();
-  const data = sh.getRange(2, 1, n, head.length).getValues();
-  let changed = false;
-  codes.forEach((c, i) => {
-    if (!c[0]) {
-      c[0] = CODE_PREFIX + String(i + 1).padStart(CODE_DIGITS, "0"); changed = true;
-      if (sendEmail && ei >= 0 && data[i][ei]) sendCodeEmail_(data[i][ei], ni >= 0 ? data[i][ni] : "", c[0]);
-    }
+  const sh = codeSheet_(), have = codeRows_(), known = new Set(have.map(c => c.email));
+  let next = have.reduce((m, c) => { const n = parseInt(String(c.code).replace(/\D/g, ""), 10); return n > m ? n : m; }, 0);
+  const rows = readForm_("ambassador").slice().sort((a, b) => a.ts - b.ts), add = [];
+  rows.forEach(r => {
+    if (!r.email || known.has(r.email)) return;
+    known.add(r.email); next++;
+    const code = CODE_PREFIX + String(next).padStart(CODE_DIGITS, "0");
+    add.push([r.email, r.name, code, "", r.ts]);
+    if (sendEmail) sendCodeEmail_(r.email, r.name, code);
   });
-  if (changed) sh.getRange(2, ci + 1, n, 1).setValues(codes);
+  if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, 5).setValues(add);
 }
 
-/* -------------------- reading the sheets -------------------- */
+/* -------------------- reading the forms -------------------- */
+function readForm_(key) {
+  const id = FORM_IDS[key];
+  if (!id) return [];
+  const items = FormApp.openById(id).getResponses();
+  return items.map(resp => {
+    const o = { ts: resp.getTimestamp(), email: String(resp.getRespondentEmail() || "").trim().toLowerCase(), name: "", phone: "", ref: "", comp: "", uni: "" };
+    resp.getItemResponses().forEach(ir => {
+      const t = ir.getItem().getTitle(), raw = ir.getResponse(), v = String(Array.isArray(raw) ? raw.join(", ") : raw == null ? "" : raw).trim();
+      if (!o.email && COL.email.test(t)) o.email = v.toLowerCase();
+      else if (!o.name && COL.name.test(t) && !COL.uni.test(t)) o.name = v;
+      else if (!o.phone && COL.phone.test(t)) o.phone = v.replace(/\D/g, "");
+      else if (!o.ref && COL.ref.test(t)) o.ref = normCode_(v);
+      else if (!o.comp && COL.comp.test(t)) o.comp = v;
+      else if (!o.uni && COL.uni.test(t)) o.uni = v;
+    });
+    return o;
+  });
+}
+/* Rows for one form, with ambassador codes attached; cached for 2 minutes */
 function readTab_(key) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(TABS[key]);
-  if (!sh || sh.getLastRow() < 2) return [];
-  const values = sh.getDataRange().getValues();
-  const head = values[0].map(String);
-  const find = re => head.findIndex(h => re.test(h));
-  const idx = { email: find(COL.email), name: head.findIndex(h => COL.name.test(h) && !COL.uni.test(h)), phone: find(COL.phone), ref: find(COL.ref), comp: find(COL.comp), uni: find(COL.uni), code: find(COL.code), status: find(COL.status) };
-  if (idx.ref === idx.code) idx.ref = -1;
-  return values.slice(1).filter(r => r.join("").trim() !== "").map(r => {
-    const get = i => (i >= 0 ? String(r[i] == null ? "" : r[i]).trim() : "");
-    return {
-      ts: r[0] instanceof Date ? r[0] : new Date(r[0]),
-      email: get(idx.email).toLowerCase(), name: get(idx.name), phone: get(idx.phone).replace(/\D/g, ""),
-      ref: normCode_(get(idx.ref)), comp: get(idx.comp), uni: get(idx.uni), code: normCode_(get(idx.code)), status: get(idx.status).toLowerCase(),
-    };
-  }).filter(r => r.status !== "rejected");
+  const cache = CacheService.getScriptCache(), hit = cache.get("rows_" + key);
+  let rows;
+  if (hit) rows = JSON.parse(hit).map(r => (r.ts = new Date(r.ts), r));
+  else {
+    rows = readForm_(key);
+    try { cache.put("rows_" + key, JSON.stringify(rows), 120); } catch (e) { /* too big to cache */ }
+  }
+  if (key === "ambassador") {
+    const byEmail = {}; codeRows_().forEach(c => (byEmail[c.email] = c));
+    rows = rows.map(r => { const c = byEmail[r.email] || {}; return Object.assign({}, r, { code: c.code || "", status: c.status || "" }); })
+      .filter(r => r.status !== "rejected");
+  }
+  return rows;
 }
 function normCode_(s) {
   s = String(s || "").toUpperCase().replace(/[\s_.]+/g, "");
