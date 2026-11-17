@@ -27,6 +27,7 @@ const FORM_IDS = {
   talent:       "1i0rWdSEtUtZt5hvKyZlXgEgXs21JVNTjF7j5u128geI",   // UET Talent Award 2026
   ambassador:   "1Bqs-XiIk80YuAV51vBtzQQLhhdT5dsLZ6K_C72IHBoY",   // UET Ambassador Registration
   competitions: "15u_eCT5mSdqM9g7YgKIjjf2ZcmDlgMiEm45PQS2LpZo",   // Competitions Form
+  stall:        "1XnM0T57cLLN9I_4Dum2zpbtLAC6BzN4Bx0D69ckMx14",   // Stall Booking (created by the site)
 };
 const CODE_PREFIX = "NEA";   // codes look like NEA01, NEA02 … (the format your Competitions form asks for)
 const CODE_DIGITS = 2;
@@ -284,4 +285,37 @@ function doPost(e) {
     CacheService.getScriptCache().remove("stats");
     return json_({ ok: true, announcements: readAnn_() });
   } catch (err) { return json_({ error: String(err) }); }
+}
+
+/* -------------------- one-off: create Stall + Sponsor forms --------------------
+   Run createStallAndSponsorForms once. It logs both form ids and links; put the ids in
+   FORM_IDS (stall) and the links in config.js. Running it again makes new copies. */
+function createStallAndSponsorForms() {
+  const thanks = "Thank you! The Nuqta-e-Aghaz team will contact you on WhatsApp shortly.\nwww.nuqtaeaghaz.org";
+  const stall = FormApp.create("Nuqta-e-Aghaz | Stall Booking")
+    .setDescription("Book a stall at Nuqta-e-Aghaz 2026 — 05 December, Faletti's Hotel, Lahore. Booking deadline: 30 November.")
+    .setConfirmationMessage(thanks).setCollectEmail(false).setAllowResponseEdits(false);
+  stall.addTextItem().setTitle("Full Name").setRequired(true);
+  stall.addTextItem().setTitle("Business / Brand Name").setRequired(true);
+  stall.addTextItem().setTitle("WhatsApp Number").setRequired(true);
+  stall.addTextItem().setTitle("Email").setRequired(true)
+    .setValidation(FormApp.createTextValidation().requireTextIsEmail().build());
+  stall.addMultipleChoiceItem().setTitle("What will you showcase?").setRequired(true)
+    .setChoiceValues(["Food & Drinks", "Books & Stationery", "Tech & Gadgets", "Clothing & Accessories", "Startup / Services"]).showOtherOption(true);
+  stall.addParagraphTextItem().setTitle("Anything else we should know?");
+
+  const sp = FormApp.create("Nuqta-e-Aghaz | Sponsorship Enquiry")
+    .setDescription("Partner with Nuqta-e-Aghaz 2026 and reach 2,000+ university students. Our team will share the full proposal and next steps.")
+    .setConfirmationMessage(thanks).setCollectEmail(false).setAllowResponseEdits(false);
+  sp.addTextItem().setTitle("Company / Organisation").setRequired(true);
+  sp.addTextItem().setTitle("Contact Person (Full Name)").setRequired(true);
+  sp.addTextItem().setTitle("WhatsApp Number").setRequired(true);
+  sp.addTextItem().setTitle("Email").setRequired(true)
+    .setValidation(FormApp.createTextValidation().requireTextIsEmail().build());
+  sp.addMultipleChoiceItem().setTitle("Plan you're interested in").setRequired(true)
+    .setChoiceValues(["Silver — PKR 100,000", "Gold — PKR 300,000", "Platinum — PKR 500,000", "Title Sponsorship — PKR 1,000,000", "Not sure yet / custom"]);
+  sp.addParagraphTextItem().setTitle("Message");
+
+  Logger.log("STALL id=" + stall.getId() + " url=" + stall.getPublishedUrl());
+  Logger.log("SPONSOR id=" + sp.getId() + " url=" + sp.getPublishedUrl());
 }
