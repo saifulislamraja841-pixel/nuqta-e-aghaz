@@ -106,7 +106,9 @@ function emailLoginsToExistingAmbassadors() {
 /* -------------------- ambassador reference numbers -------------------- */
 /* The Ambassador form's response sheet is the source of truth:
    - Reference Number: numbers you typed by hand are kept as they are. Every new row gets
-     the next number after the highest one (NEA40 → NEA41 …). Numbers are never reused.
+     the next number after the highest one (NEA40 → NEA41 …). Numbers are never reused or changed.
+   - Only UET students get a number: their campus must be one of the form's campus options.
+     Anyone who picked "Other" (e.g. UOL City Campus) gets Status "Not UET - no ambassador number".
    - Status: write "rejected" to remove someone. Repeat sign-ups (same email, WhatsApp
      number or UET registration number as an earlier row) get "Duplicate of NEAxx" and no number.
    - Portal Password: made automatically. Username = the reference number.
@@ -126,7 +128,7 @@ function ambColumns_(sh, head, data) {
   if (ref < 0) ref = H.findIndex((h, c) => !/timestamp|email/i.test(h) && data.some(r => /^NEA\s*-?\d+$/i.test(String(r[c]).trim())));
   if (ref >= 0 && H[ref] !== AMB_COLS.ref) sh.getRange(1, ref + 1).setValue(AMB_COLS.ref);
   const idx = { ref, email: find(/e-?mail/i), name: find(/^(full\s*)?name/i), phone: find(/phone|whats\s*app|mobile|contact/i),
-    reg: find(/registration\s*(no|number)|roll/i), pass: find(/^portal password$/i), sent: find(/^login sent$/i), status: find(/^status$/i), ts: find(/^timestamp$/i) };
+    reg: find(/registration\s*(no|number)|roll/i), campus: find(/campus|universit/i), pass: find(/^portal password$/i), sent: find(/^login sent$/i), status: find(/^status$/i), ts: find(/^timestamp$/i) };
   ["ref", "pass", "sent", "status"].forEach(k => {
     if (idx[k] >= 0) return;
     const c = sh.getLastColumn() + 1;
@@ -166,38 +168,59 @@ function syncAmbassadors_(sendEmail, includeOld) {
       if (e) k.push("e:" + e); if (p.length >= 7) k.push("p:" + p); if (g.length >= 4) k.push("g:" + g);
       return k;
     };
-    let sent = 0, changed = false;
+    // Only UET students are ambassadors: the campus must be one of the form's own options
+    // (Main Campus, KSK Campus, UET RCET Campus …). An "Other" answer such as "UOL City Campus" gets no number.
+    const uetCampuses = campusChoices_();
+    const isUet = r => {
+      const c = cell(r, "campus"), all = (c + " " + cell(r, "reg")).toLowerCase();
+      if (/not\s+(in|from|of)\s+uet/.test(all)) return false;
+      return !c || !uetCampuses.length || uetCampuses.indexOf(c.toLowerCase()) >= 0 || /\buet\b/i.test(c);
+    };
+    let sent = 0;
+    const edits = [], set = (r, k, v) => { r[C[k]] = v; edits.push([rows.indexOf(r), C[k], v]); };
     rows.forEach(r => {
       const status = cell(r, "status").toLowerCase(), keys = keysOf(r);
       let ref = cell(r, "ref");
       if (/reject/.test(status)) return;
+      if (!ref && !isUet(r)) {                              // not a UET student: never numbered
+        if (!status) set(r, "status", "Not UET - no ambassador number");
+        return;
+      }
       const firstRef = keys.map(k => seen[k]).find(Boolean);
       if (!ref && firstRef) {                               // repeat sign-up: no new number
-        if (!status) { r[C.status] = "Duplicate of " + firstRef; changed = true; }
+        if (!status) set(r, "status", "Duplicate of " + firstRef);
         if (sendEmail && !cell(r, "sent") && r[C.ts] instanceof Date && r[C.ts].getTime() > from && MailApp.getRemainingDailyQuota() > 0) {
           const orig = rows.find(o => cell(o, "ref") === firstRef);
-          if (sendLoginEmail_(cell(r, "email"), cell(r, "name"), firstRef, orig ? cell(orig, "pass") : "", true)) { r[C.sent] = new Date(); sent++; changed = true; }
+          if (sendLoginEmail_(cell(r, "email"), cell(r, "name"), firstRef, orig ? cell(orig, "pass") : "", true)) { set(r, "sent", new Date()); sent++; }
         }
         return;
       }
-      if (/^duplicate/.test(status)) return;                // the team marked it by hand
+      if (/^duplicate|not uet/.test(status)) return;        // the team marked it by hand
       if (!ref) {
         do { best.n++; ref = best.prefix + String(best.n).padStart(best.width, "0"); } while (used.has(refKey_(ref)));
-        used.add(refKey_(ref)); r[C.ref] = ref; changed = true;
+        used.add(refKey_(ref)); set(r, "ref", ref);
       }
       keys.forEach(k => { if (!seen[k]) seen[k] = ref; });
-      if (!cell(r, "pass")) { r[C.pass] = newPassword_(); changed = true; }
+      if (!cell(r, "pass")) set(r, "pass", newPassword_());
       const isNew = r[C.ts] instanceof Date ? r[C.ts].getTime() > from : includeOld;
       if (sendEmail && isNew && !cell(r, "sent") && cell(r, "email") && MailApp.getRemainingDailyQuota() > 0) {
-        if (sendLoginEmail_(cell(r, "email"), cell(r, "name"), ref, cell(r, "pass"), false)) { r[C.sent] = new Date(); sent++; changed = true; }
+        if (sendLoginEmail_(cell(r, "email"), cell(r, "name"), ref, cell(r, "pass"), false)) { set(r, "sent", new Date()); sent++; }
       }
     });
-    if (changed) {
-      // write back only the four script columns, so form answers are never touched
-      ["ref", "pass", "sent", "status"].forEach(k => sh.getRange(2, C[k] + 1, rows.length, 1).setValues(rows.map(r => [r[C[k]]])));
-    }
+    // write only the cells that changed: reference numbers already in the sheet are never rewritten
+    edits.forEach(([i, c, v]) => sh.getRange(i + 2, c + 1).setValue(v));
     return sent;
   } finally { lock.releaseLock(); }
+}
+/* The campus options listed in the Ambassador form (lower-case) */
+function campusChoices_() {
+  try {
+    const it = FormApp.openById(FORM_IDS.ambassador).getItems().find(i => /campus|universit/i.test(i.getTitle()));
+    if (!it) return [];
+    const t = it.getType(), T = FormApp.ItemType;
+    const q = t === T.MULTIPLE_CHOICE ? it.asMultipleChoiceItem() : t === T.LIST ? it.asListItem() : t === T.CHECKBOX ? it.asCheckboxItem() : null;
+    return q ? q.getChoices().map(c => String(c.getValue()).trim().toLowerCase()) : [];
+  } catch (e) { return []; }
 }
 /* Reference number, password and status for every ambassador, keyed by email */
 function ambRows_() {
