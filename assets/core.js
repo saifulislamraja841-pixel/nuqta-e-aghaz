@@ -102,6 +102,7 @@
   };
   N.openForm = (key) => {
     const f = (C.forms || {})[key] || { title: "Registration" };
+    if (f.newTab && f.url) { window.open(N.formUrl(key, false), "_blank", "noopener"); return; }
     let m = N.$("#formModal");
     if (!m) {
       m = document.createElement("div");
