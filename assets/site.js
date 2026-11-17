@@ -36,7 +36,7 @@
 
   const gl = $("#guestList");
   if (gl) {
-    const guests = [["Waseem Haider", "President IJT Pakistan"], ["Ahsan Iqbal", "Federal Minister"], ["Ahmad Bilal", "President PILDAT"], ["Eng. Haider Ali", "President PEF Pakistan"],
+    const guests = [["Ahsan Iqbal", "Federal Minister"], ["Ahmad Bilal", "President PILDAT"], ["Eng. Haider Ali", "President PEF Pakistan"],
       ["Wahaj Siraj", "CEO Nayatel"], ["Tabish Hashmi", "TV Show Host"], ["Abbas Tabish", "Renowned Poet"], ["Iftikhar Thakur", "Comedian"],
       ["Hammad Rasheed", "President AKFP Lahore"], ["Rehan Tariq", "Journalist"], ["Qasim Ali Shah", "Motivational Speaker"], ["Hisham Sarwar", "Tech Enthusiast"]];
     gl.innerHTML = guests.map((g, i) => {
