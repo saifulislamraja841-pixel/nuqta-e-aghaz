@@ -5,7 +5,7 @@
 <title>My Portal · Nuqta-e-Aghaz</title>
 <link rel="icon" href="assets/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261118"><link rel="stylesheet" href="assets/app.css?v=20261118">
+<link rel="stylesheet" href="assets/style.css?v=20261119"><link rel="stylesheet" href="assets/app.css?v=20261119">
 </head>
 <body class="app">
 <div class="aurora"></div><canvas id="dots"></canvas><div class="grain"></div>
@@ -14,9 +14,9 @@
   <form class="login-box" id="loginForm">
     <a href="index.html"><img src="assets/logo-full.png" alt="Nuqta-e-Aghaz"></a>
     <h2>My Portal</h2>
-    <p class="s">For attendees, competitors, talent-award applicants and ambassadors. Use the details you gave in your registration form.</p>
-    <div class="field"><label for="em">Registered email</label><input class="input" id="em" type="email" autocomplete="email" required></div>
-    <div class="field"><label for="ph">Last 4 digits of your phone number</label><input class="input" id="ph" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required></div>
+    <p class="s"><b>Ambassadors:</b> sign in with the reference number and password we emailed you.<br><b>Everyone else:</b> use your registered email and the last 4 digits of your phone number.</p>
+    <div class="field"><label for="em">Username (reference number or email)</label><input class="input" id="em" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="e.g. NEA07" required></div>
+    <div class="field"><label for="ph">Password (or last 4 phone digits)</label><input class="input" id="ph" type="password" autocomplete="current-password" required></div>
     <button class="btn btn-primary btn-block" type="submit">Sign in</button>
     <div class="err" id="loginErr"></div>
     <p class="hint" id="loginHint">Not registered yet? <a href="index.html" style="color:var(--lilac)">Register on the main site</a>.</p>
@@ -44,24 +44,30 @@
   </div>
 </div>
 
-<script src="config.js?v=20261118"></script>
-<script src="assets/core.js?v=20261118"></script>
+<script src="config.js?v=20261119"></script>
+<script src="assets/core.js?v=20261119"></script>
 <script>
 (function(){
   const N = Nuqta, C = N.C; let CRED = N.session.get("nuqta_portal");
+  if (CRED && !CRED.token) CRED = null;   // old email + phone sessions: sign in again
   N.hydrateIcons(); N.dots();
-  if (N.isDemo()) N.$("#loginHint").innerHTML = 'Demo mode: any email works. Try <b>ambassador@demo.pk</b> or <b>student@demo.pk</b> with 1234.';
+  if (N.isDemo()) N.$("#loginHint").innerHTML = 'Demo mode: try <b>NEA07</b> or <b>student@demo.pk</b> with any password.';
 
   async function load(){
     const d = await N.api("portal", CRED);
     if (!d.ok) throw new Error(d.message || "We couldn't find a registration with these details.");
     render(d);
   }
+  async function signIn(user, pass){
+    const d = await N.post({ action: "login", user, pass });
+    if (!d.ok) throw new Error(d.message || "We couldn't sign you in with these details.");
+    CRED = { token: d.token }; N.session.set("nuqta_portal", CRED);
+    render(d);
+  }
   N.$("#loginForm").addEventListener("submit", async e=>{
     e.preventDefault(); N.$("#loginErr").textContent = "";
-    CRED = { email: N.$("#em").value.trim().toLowerCase(), phone4: N.$("#ph").value.trim() };
     const b = N.$("#loginForm button"); b.disabled = true; b.textContent = "Checking…";
-    try { await load(); N.session.set("nuqta_portal", CRED); show(); }
+    try { await signIn(N.$("#em").value.trim(), N.$("#ph").value.trim()); show(); }
     catch(err){ N.$("#loginErr").textContent = err.message; }
     b.disabled = false; b.textContent = "Sign in";
   });
