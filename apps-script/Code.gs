@@ -65,14 +65,26 @@ function setup() {
     ScriptApp.newTrigger("onAnySubmit").forForm(FORM_IDS[k]).onFormSubmit().create();
     Logger.log("✓ " + TABS[k] + ": " + FormApp.openById(FORM_IDS[k]).getResponses().length + " responses");
   });
+  ScriptApp.newTrigger("refreshAll").timeBased().everyMinutes(5).create();
+  refreshAll();
   Logger.log("✅ Setup complete. Now Deploy → New deployment → Web app.");
 }
 
 /* Runs on every form submission (installed by setup) */
 function onAnySubmit(e) {
+  CacheService.getScriptCache().removeAll(["stats"].concat(Object.keys(TABS).map(k => "rows_" + k)));
+  if (e && e.source && e.source.getId() === FORM_IDS.ambassador) assignAmbassadorCodes_(SEND_AMBASSADOR_EMAIL);
+  refreshAll();
+}
+
+/* Reads every form once and keeps the results ready, so the dashboard and portal open instantly.
+   setup() runs this every 5 minutes; it also runs after each form submission. */
+const CACHE_SECONDS = 6 * 3600;
+function refreshAll() {
   const cache = CacheService.getScriptCache();
   cache.removeAll(["stats"].concat(Object.keys(TABS).map(k => "rows_" + k)));
-  if (e && e.source && e.source.getId() === FORM_IDS.ambassador) assignAmbassadorCodes_(SEND_AMBASSADOR_EMAIL);
+  Object.keys(TABS).forEach(k => readTab_(k));
+  stats_();
 }
 
 /* Run this ONCE by hand if you want every existing ambassador emailed their code + link */
@@ -148,7 +160,7 @@ function readTab_(key) {
   if (hit) rows = JSON.parse(hit).map(r => (r.ts = new Date(r.ts), r));
   else {
     rows = readForm_(key);
-    try { cache.put("rows_" + key, JSON.stringify(rows), 120); } catch (e) { /* too big to cache */ }
+    try { cache.put("rows_" + key, JSON.stringify(rows), CACHE_SECONDS); } catch (e) { /* too big to cache */ }
   }
   if (key === "ambassador") {
     const byEmail = {}; codeRows_().forEach(c => (byEmail[c.email] = c));
@@ -209,7 +221,7 @@ function stats_() {
     universities: Object.keys(uniCount).map(n => ({ name: n, count: uniCount[n] })).sort((a, b) => b.count - a.count).slice(0, 12),
     timeline, leaderboard, recent: recent.slice(0, 12), invalidRefs: invalid, announcements: readAnn_(),
   };
-  cache.put("stats", JSON.stringify(out), 60);
+  try { cache.put("stats", JSON.stringify(out), CACHE_SECONDS); } catch (e) { /* too big to cache */ }
   return out;
 }
 
