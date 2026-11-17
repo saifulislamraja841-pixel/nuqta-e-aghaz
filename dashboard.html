@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="assets/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261118"><link rel="stylesheet" href="assets/app.css?v=20261118">
+<link rel="stylesheet" href="assets/style.css?v=20261119"><link rel="stylesheet" href="assets/app.css?v=20261119">
 </head>
 <body class="app">
 <div class="aurora"></div><div class="grain"></div>
@@ -103,8 +103,8 @@
   </main>
 </div>
 
-<script src="config.js?v=20261118"></script>
-<script src="assets/core.js?v=20261118"></script>
+<script src="config.js?v=20261119"></script>
+<script src="assets/core.js?v=20261119"></script>
 <script>
 (function(){
   const N = Nuqta; let KEY = N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
@@ -117,8 +117,11 @@
   }
   N.$("#loginForm").addEventListener("submit", async e=>{
     e.preventDefault(); KEY = N.$("#key").value.trim(); N.$("#loginErr").textContent = "";
+    const btn = e.target.querySelector("button"), label = btn.textContent;
+    btn.disabled = true; btn.textContent = "Loading live data…";
     try { await load(); N.session.set("nuqta_admin", KEY); enter(); }
     catch(err){ N.$("#loginErr").textContent = /key/i.test(err.message) ? "That key is not correct." : "Could not reach the backend: " + err.message; }
+    finally { btn.disabled = false; btn.textContent = label; }
   });
   function enter(){ N.$("#login").hidden = true; N.$("#app").hidden = false; N.$("#demoBanner").hidden = !DATA.demo; }
   N.$("#logout").addEventListener("click", ()=>{ N.session.del("nuqta_admin"); location.reload(); });
