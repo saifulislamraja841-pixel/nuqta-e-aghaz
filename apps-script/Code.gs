@@ -10,6 +10,7 @@
 /* ======================= EDIT THESE ======================= */
 const ADMIN_KEY = "change-this-to-a-long-secret";        // password for the team dashboard
 const SITE_URL  = "https://www.nuqtaeaghaz.org/";        // where index.html is hosted (ends with /)
+const SEND_PARTICIPANT_EMAIL = true;                      // email new participants (main event, competitions, talent) their portal login
 const SEND_AMBASSADOR_EMAIL = true;                       // email new ambassadors their reference number + portal login
 
 /* Labels for each form (used in the dashboard) */
@@ -59,7 +60,7 @@ const COL = {
    Ambassador form's own response sheet (columns Reference Number, Portal Password,
    Login Sent, Status). This spreadsheet keeps the announcements. */
 function setup() {
-  annSheet_();
+  annSheet_(); partSheet_();
   syncAmbassadors_(false);                                   // number existing rows, no emails
   PropertiesService.getScriptProperties().setProperty("LOGIN_EMAILS_FROM", String(Date.now()));
   ScriptApp.getProjectTriggers().forEach(tr => ScriptApp.deleteTrigger(tr));
@@ -89,6 +90,7 @@ function onAmbassadorRow() {
 const CACHE_SECONDS = 6 * 3600;
 function refreshAll() {
   syncAmbassadors_(SEND_AMBASSADOR_EMAIL);                  // catches any row the submit trigger missed
+  try { syncParticipants_(SEND_PARTICIPANT_EMAIL); } catch (e) { Logger.log("Participants: " + e); }
   const cache = CacheService.getScriptCache();
   cache.removeAll(["stats"].concat(Object.keys(TABS).map(k => "rows_" + k)));
   Object.keys(TABS).forEach(k => readTab_(k));
@@ -101,6 +103,87 @@ function refreshAll() {
 function emailLoginsToExistingAmbassadors() {
   const n = syncAmbassadors_(true, true);
   Logger.log("Emails sent: " + n + ". Remaining Gmail quota today: " + MailApp.getRemainingDailyQuota());
+}
+
+/* -------------------- participant logins -------------------- */
+/* "Participant Logins" tab in this spreadsheet: one row per email that registered for the
+   main event, a competition or the Talent Award. Username = their email; the password is made
+   automatically. New participants are emailed their login within 5 minutes.
+   Write "skip" in Status to never email someone. Clear Login Sent to email them again. */
+const PART_TAB = "Participant Logins";
+const PART_FORMS = { main: "Main Event", competitions: "Competitions", talent: "Talent Award" };
+const MAIL_RESERVE = 10;   // always keep this many of Gmail's daily emails for new ambassadors
+function partSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(PART_TAB);
+  if (!sh) { sh = ss.insertSheet(PART_TAB); sh.appendRow(["Email", "Name", "Registered for", "Portal Password", "Login Sent", "Status"]); sh.setFrozenRows(1); sh.getRange(1, 1, 1, 6).setFontWeight("bold"); }
+  return sh;
+}
+function partRows_() {
+  const v = partSheet_().getDataRange().getValues().slice(1);
+  return v.filter(r => r[0]).map(r => ({ email: String(r[0]).trim().toLowerCase(), name: String(r[1] || ""), pass: String(r[3] || "").trim(), status: String(r[5] || "").toLowerCase() }));
+}
+/* Adds new participants, then emails anyone not yet emailed. Existing participants are only
+   emailed after emailLoginsToExistingParticipants() has been run once. Returns emails sent. */
+function syncParticipants_(sendEmail) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return 0;
+  try {
+    const pr = PropertiesService.getScriptProperties(), first = !pr.getProperty("PART_INIT");
+    const backfill = pr.getProperty("PART_BACKFILL") === "on";
+    const sh = partSheet_(), rows = sh.getDataRange().getValues().slice(1).map(r => { r = r.slice(0, 6); while (r.length < 6) r.push(""); return r; });
+    const at = {}; rows.forEach((r, i) => (at[String(r[0]).trim().toLowerCase()] = i));
+    const before = rows.length, edits = [], fresh = new Set();
+    Object.keys(PART_FORMS).forEach(k => readTab_(k).forEach(r => {
+      if (!r.email || r.email.indexOf("@") < 0) return;
+      let i = at[r.email];
+      if (i === undefined) {
+        i = at[r.email] = rows.length; rows.push([r.email, r.name || "", PART_FORMS[k], newPassword_(), "", ""]);
+        if (!first) fresh.add(i);
+      } else {
+        const f = String(rows[i][2] || "");
+        if (f.split(", ").indexOf(PART_FORMS[k]) < 0) { rows[i][2] = f ? f + ", " + PART_FORMS[k] : PART_FORMS[k]; if (i < before) edits.push([i, 2]); }
+        if (!rows[i][1] && r.name) { rows[i][1] = r.name; if (i < before) edits.push([i, 1]); }
+        if (!String(rows[i][3]).trim()) { rows[i][3] = newPassword_(); if (i < before) edits.push([i, 3]); }
+      }
+    }));
+    if (rows.length > before) sh.getRange(before + 2, 1, rows.length - before, 6).setValues(rows.slice(before));
+    edits.forEach(([i, c]) => sh.getRange(i + 2, c + 1).setValue(rows[i][c]));
+    if (first) pr.setProperty("PART_INIT", String(Date.now()));
+    let sent = 0;
+    if (sendEmail) rows.forEach((r, i) => {
+      if (r[4] || /skip|stop/i.test(String(r[5])) || !(backfill || fresh.has(i))) return;
+      if (MailApp.getRemainingDailyQuota() <= MAIL_RESERVE) return;
+      if (sendParticipantEmail_(r[0], r[1], r[3], r[2])) { r[4] = new Date(); sh.getRange(i + 2, 5).setValue(r[4]); sent++; }
+    });
+    if (backfill && rows.every(r => r[4] || /skip|stop/i.test(String(r[5])))) pr.deleteProperty("PART_BACKFILL");
+    return sent;
+  } finally { lock.releaseLock(); }
+}
+/* Run this ONCE by hand to email every existing participant their login. Gmail allows about
+   100 emails a day; whoever is left is emailed automatically over the next days. */
+function emailLoginsToExistingParticipants() {
+  PropertiesService.getScriptProperties().setProperty("PART_BACKFILL", "on");
+  const n = syncParticipants_(true);
+  const left = partSheet_().getDataRange().getValues().slice(1).filter(r => r[0] && !r[4] && !/skip|stop/i.test(String(r[5]))).length;
+  Logger.log("Emails sent: " + n + ". Still to send: " + left + (left ? " (sent automatically when Gmail's daily limit resets)" : "") + ".");
+}
+function sendParticipantEmail_(to, name, pass, forms) {
+  try {
+    const portal = SITE_URL + "portal.html";
+    MailApp.sendEmail({
+      to: String(to).trim(),
+      subject: "Your Nuqta-e-Aghaz Portal Login",
+      htmlBody: "Assalam o Alaikum " + (name || "") + ",<br><br>Thank you for registering for Nuqta-e-Aghaz 2026" + (forms ? " (" + forms + ")" : "") + ". " +
+        "Your personal portal shows what you've registered for, plus event updates and announcements from the team.<br><br>" +
+        "<table style='border-collapse:collapse;font-size:15px'>" +
+        "<tr><td style='padding:4px 14px 4px 0'>Username</td><td><b>" + to + "</b></td></tr>" +
+        "<tr><td style='padding:4px 14px 4px 0'>Password</td><td><b style='font-family:monospace;font-size:16px'>" + pass + "</b></td></tr>" +
+        "<tr><td style='padding:4px 14px 4px 0'>Sign in here</td><td><a href='" + portal + "'>" + portal + "</a></td></tr></table><br>" +
+        "Please don't share your password.<br><br>— Team Nuqta-e-Aghaz",
+    });
+    return true;
+  } catch (err) { Logger.log("Email failed: " + err); return false; }
 }
 
 /* -------------------- ambassador reference numbers -------------------- */
@@ -351,11 +434,13 @@ function login_(user, pass) {
   const key = refKey_(user), em = user.toLowerCase();
   const amb = ambRows_().find(a => (key && /^[A-Z]*-?\d+$/i.test(user.replace(/\s/g, "")) && refKey_(a.code) === key) || a.email === em);
   if (amb && amb.pass && amb.pass === pass) return portalWithToken_(amb.email);
+  const part = /@/.test(em) && partRows_().find(p => p.email === em);
+  if (part && part.pass && part.pass === pass) return portalWithToken_(part.email);
   if (/@/.test(em) && /^\d{4}$/.test(pass)) {
     const r = portal_(em, pass);
     return r.ok ? Object.assign(r, { token: token_(em) }) : r;
   }
-  return { ok: false, message: amb ? "Wrong password. Check the email we sent you after you registered." : "We couldn't find that username. Ambassadors: use your reference number (e.g. NEA07). Others: use your email." };
+  return { ok: false, message: amb || part ? "Wrong password. Check the email we sent you after you registered." : "We couldn't find that username. Ambassadors: use your reference number (e.g. NEA07). Others: use your email." };
 }
 function portalWithToken_(email) { const r = portalData_(email); return r.ok ? Object.assign(r, { token: token_(email) }) : r; }
 function secret_() {
