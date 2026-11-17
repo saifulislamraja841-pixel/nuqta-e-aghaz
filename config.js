@@ -32,17 +32,23 @@ window.NUQTA_CONFIG = {
   /* Your Google Forms.
      url      → the form's normal link (…/viewform)
      refEntry → the pre-fill id of the "Ambassador / Referral Code" question,
-                e.g. "entry.1234567890". Leave "" if that form has no such question. */
+                e.g. "entry.1234567890". Leave "" if that form has no such question.
+     newTab   → true opens the form in a new tab instead of the pop-up
+                (needed for forms with file uploads, which Google won't show inside other sites). */
   forms: {
     main:        { title: "Fiesta Registration (Main Event)",
-                   url: "https://docs.google.com/forms/d/e/1FAIpQLScy08HXEK8w1wd0Htvarmhno6G_QZsC73XYX4LAVNF6n2bAWA/viewform", refEntry: "entry.28514730" },
+                   url: "https://docs.google.com/forms/d/e/1FAIpQLScy08HXEK8w1wd0Htvarmhno6G_QZsC73XYX4LAVNF6n2bAWA/viewform", refEntry: "entry.28514730",
+                   newTab: true },   // has a file upload → Google only allows it in its own tab
     ambassador:  { title: "UET Ambassador Registration",
                    url: "https://docs.google.com/forms/d/e/1FAIpQLSe7JI-9uPDNm9J8Ld0EU9vb_Ue9FkkMP9RTFNWK_O8qOEEE9g/viewform", refEntry: "" },
     competitions:{ title: "Competitions Registration",
                    url: "https://docs.google.com/forms/d/e/1FAIpQLSd3re2BCc5EVtDaGyF-YU_rCcMvQ_nj7Zrxm9_GZuR_YsIsgQ/viewform", refEntry: "entry.1048051579" },
     talent:      { title: "UET Talent Award 2026",
-                   url: "https://docs.google.com/forms/d/e/1FAIpQLSdIRaasilex_te8rO2ic9nO3je1uD41jpbV3U9Z_ggqW1bzPQ/viewform", refEntry: "entry.324524728" },
-    stall:       { title: "Stall Booking",               url: "", refEntry: "" },
-    sponsor:     { title: "Sponsorship Enquiry",         url: "", refEntry: "" },
+                   url: "https://docs.google.com/forms/d/e/1FAIpQLSdIRaasilex_te8rO2ic9nO3je1uD41jpbV3U9Z_ggqW1bzPQ/viewform", refEntry: "entry.324524728",
+                   newTab: true },   // has a file upload → Google only allows it in its own tab
+    stall:       { title: "Stall Booking",
+                   url: "https://docs.google.com/forms/d/e/1FAIpQLSeNXW-og9fJLNNy-UM8r_fWRZ6pecjTHv8gBMQ24ceR_jftkA/viewform", refEntry: "" },
+    sponsor:     { title: "Sponsorship Enquiry",
+                   url: "https://docs.google.com/forms/d/e/1FAIpQLScOxA7zWECvimM2URMZMEF70nji6wnQKbbPGtwF1tVUzVeNjA/viewform", refEntry: "" },
   },
 };
