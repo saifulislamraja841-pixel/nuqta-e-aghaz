@@ -1,6 +1,6 @@
 # Nuqta-e-Aghaz 2026
 
-Event website for **Nuqta-e-Aghaz**, 05 December 2026, Faletti's Hotel, Lahore. Organised by Islami Jamiat Talaba UET Lahore.
+Event website for **Nuqta-e-Aghaz**, 05 December 2026, Faletti's Hotel, Lahore. Organised by students of UET Lahore.
 
 - `index.html`: public site for students and sponsors
 - `portal.html`: portal for attendees, competitors, talent-award applicants and ambassadors
