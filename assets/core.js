@@ -208,7 +208,7 @@
       };
     }
     if (action === "portal") {
-      const email = (params.email || "").toLowerCase();
+      const email = String(params.email || params.token || "").replace(/^demo:/, "").toLowerCase();
       const isAmb = /amb/.test(email) || !/student|guest/.test(email);
       const me = lb[6];
       return {
@@ -226,6 +226,12 @@
   };
   N.demoPost = async (p) => {
     await new Promise((r) => setTimeout(r, 300));
+    if (p.action === "login") {
+      const user = String(p.user || "").trim().toLowerCase();
+      if (!user || !p.pass) return { ok: false, message: "Enter your username and password." };
+      const d = await N.demo("portal", { email: /^nea/.test(user) ? "ambassador@demo.pk" : user });
+      return Object.assign(d, { token: "demo:" + d.profile.email });
+    }
     let list = demoAnnouncements();
     if (p.action === "announce") list = [{ id: "d" + Date.now(), ts: new Date().toISOString(), title: p.title, message: p.message, audience: p.audience, link: p.link || "", pinned: !!p.pinned }, ...list];
     if (p.action === "deleteAnnouncement") list = list.filter((a) => a.id !== p.id);
