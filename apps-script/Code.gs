@@ -16,12 +16,7 @@ const EMAIL_REPLIES = false;                              // messages and replie
 /* WhatsApp alert to the official number for every new portal message (free CallMeBot API, see SETUP.md).
    Paste the API key here in the Apps Script editor only; do not commit it to GitHub. "" = alerts off. */
 const WHATSAPP_ALERT_NUMBER = "923484243350";             // official number, international format, no +
-const WHATSAPP_APIKEY = "";
-/* Test account for trying the portal (not a real registration; not counted anywhere).
-   Delete the line inside { } to switch it off. */
-const TEST_ACCOUNTS = {
-  "test@nuqtaeaghaz.org": { pass: "NuqtaTest-2026", name: "Test Student", university: "UET Lahore (test)" },
-};                               // the key CallMeBot sends to the official number
+const WHATSAPP_APIKEY = "";                               // the key CallMeBot sends to the official number
 
 /* Labels for each form (used in the dashboard) */
 const TABS = {
@@ -447,7 +442,6 @@ function checkLogin_(user, pass) {
   user = String(user || "").trim(); pass = String(pass || "").trim();
   if (!user || !pass) return { ok: false, message: "Enter your username and password." };
   const key = refKey_(user), em = user.toLowerCase();
-  if (TEST_ACCOUNTS[em]) return TEST_ACCOUNTS[em].pass === pass ? portalWithToken_(em) : { ok: false, message: "Wrong password." };
   const amb = ambRows_().find(a => (key && /^[A-Z]*-?\d+$/i.test(user.replace(/\s/g, "")) && refKey_(a.code) === key) || a.email === em);
   if (amb && amb.pass && amb.pass === pass) return portalWithToken_(amb.email);
   const part = /@/.test(em) && partRows_().find(p => p.email === em);
@@ -483,11 +477,6 @@ function portal_(email, phone4) {
   return portalData_(email);
 }
 function portalData_(email) {
-  const T = TEST_ACCOUNTS[email];
-  if (T) return { ok: true, test: true, profile: { name: T.name, email, university: T.university },
-    roles: { main: { registered: true, ts: null }, ambassador: null, competitions: ["Qirat"], talent: { applied: false }, stall: null },
-    announcements: readAnn_().filter(a => ["all", "attendees", "competitors", "email:" + email].indexOf(a.audience) >= 0),
-    messages: readMessages_().filter(m => m.email === email) };
   const D = {}; Object.keys(TABS).forEach(k => (D[k] = readTab_(k).filter(r => r.email === email)));
   const mine = [].concat(D.main, D.ambassador, D.competitions, D.talent, D.stall);
   if (!mine.length) return { ok: false, message: "No registration found for this account." };
@@ -606,7 +595,7 @@ function sendMessage_(token, topic, message) {
   const cache = CacheService.getScriptCache(), rk = "msgs_" + email, n = Number(cache.get(rk) || 0);
   if (n >= 5) return { ok: false, message: "You've sent several messages in the last hour. Please wait for our reply." };
   cache.put(rk, String(n + 1), 3600);
-  const acct = TEST_ACCOUNTS[email] || ambRows_().find(a => a.email === email) || partRows_().find(p => p.email === email) || {};
+  const acct = ambRows_().find(a => a.email === email) || partRows_().find(p => p.email === email) || {};
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try { msgSheet_().appendRow(["M" + Date.now(), new Date(), email, acct.name || "", topic, message, "Open", "", ""]); }
   finally { lock.releaseLock(); }
