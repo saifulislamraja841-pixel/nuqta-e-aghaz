@@ -354,7 +354,7 @@
         demo: true, generatedAt: new Date().toISOString(),
         totals: { accounts: people.length, activated: people.filter((p) => p.activated).length, loggedIn: people.filter((p) => p.lastSeen).length, never: people.filter((p) => !p.lastSeen).length,
           active24h: since(864e5), active7d: since(7 * 864e5), logins: people.reduce((s, p) => s + p.logins, 0) },
-        groups: { ambassadors: grp("Ambassador"), participants: grp("Participant") }, daily, people,
+        groups: { ambassadors: grp("Ambassador"), participants: grp("Participant") }, daily, people, mail: { quota: 87, autoAmbassadors: true, autoParticipants: true },
       };
     }
     return { demo: true };
@@ -370,7 +370,9 @@
       const user = String(p.user).trim().toLowerCase(), d = await N.demo("portal", { email: /^nea/.test(user) ? "ambassador@demo.pk" : user });
       return Object.assign(d, { token: "demo:" + d.profile.email, username: p.user });
     }
-    if (p.action === "sendReminders") return { ok: true, demo: true, sent: 64, left: 0 };
+    if (p.action === "sendReminders") return { ok: true, demo: true, sent: p.channel === "portal" ? 0 : 27, posted: p.channel === "email" ? 0 : 27, left: 0 };
+    if (p.action === "remindPeople") { const n = (p.emails || []).length; return { ok: true, demo: true, emailed: p.channel === "portal" ? 0 : n, posted: p.channel === "email" ? 0 : n, failed: 0, noQuota: 0 }; }
+    if (p.action === "sendLogin") return { ok: true, demo: true, sent: (p.emails || []).length, failed: 0, noQuota: 0 };
     if (p.action === "changePassword") return String(p.pass || "").length < 6 ? { ok: false, message: "Use at least 6 characters for your password." } : { ok: true, demo: true, username: "NEA07" };
     if (p.action === "login") {
       const user = String(p.user || "").trim().toLowerCase();

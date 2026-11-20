@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261120r"><link rel="stylesheet" href="assets/app.css?v=20261120r"><link rel="stylesheet" href="assets/mobile.css?v=20261120r">
+<link rel="stylesheet" href="assets/style.css?v=20261120s"><link rel="stylesheet" href="assets/app.css?v=20261120s"><link rel="stylesheet" href="assets/mobile.css?v=20261120s">
 </head>
 <body class="app">
 <div class="aurora"></div><div class="grain"></div>
@@ -38,7 +38,7 @@
     <a class="tab" data-view="competitions" data-icon="trophy">Competitions & Awards</a>
     <a class="tab" data-view="announce" data-icon="bell">Announcements</a>
     <a class="tab" data-view="messages" data-icon="mail">Messages <span class="cnt" id="msgBadge"></span></a>
-    <a class="tab" data-view="activity" data-icon="chart">Portal activity</a>
+    <a class="tab" data-view="activity" data-icon="chart">Logins &amp; reminders</a>
     <div class="grow"></div>
     <div class="mini" id="syncInfo"></div>
     <a class="tab" id="logout" data-icon="logout">Sign out</a>
@@ -120,7 +120,7 @@
 
     <!-- PORTAL ACTIVITY -->
     <section class="view" id="v-activity">
-      <div class="topbar"><h1>Portal activity</h1><span class="meta" id="actUpdated"></span>
+      <div class="topbar"><h1>Logins &amp; reminders</h1><span class="meta" id="actUpdated"></span>
         <button class="btn btn-ghost btn-sm" id="actRefresh"><span data-icon="refresh"></span>Refresh</button>
         <button class="btn btn-ghost btn-sm" id="actCsv"><span data-icon="download"></span>Export CSV</button></div>
       <div id="actBody"><div class="panel empty"><div class="spinner" style="margin:0 auto 12px"></div>Loading portal activity…</div></div>
@@ -128,8 +128,8 @@
   </main>
 </div>
 
-<script src="config.js?v=20261120r"></script>
-<script src="assets/core.js?v=20261120r"></script>
+<script src="config.js?v=20261120s"></script>
+<script src="assets/core.js?v=20261120s"></script>
 <script>
 (function(){
   const N = Nuqta; let KEY = N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
@@ -334,7 +334,7 @@
     const T = ACT.totals, G = ACT.groups;
     N.$("#actUpdated").textContent = "Updated " + new Date(ACT.generatedAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
     N.$("#actBody").innerHTML = `
-      <div class="kpis">${kpi("users","Portal accounts",T.accounts,"Ambassadors + participants",true) + kpi("link","Activated",T.activated, pct(T.activated,T.accounts)+"% got their login details") +
+      <div class="kpis">${kpi("users","Portal accounts",T.accounts,"Ambassadors + participants",true) + kpi("mail","Login email sent",T.activated, pct(T.activated,T.accounts)+"% got their username + password") +
         kpi("check","Have logged in",T.loggedIn, pct(T.loggedIn,T.accounts)+"% of accounts") +
         kpi("bell","Never logged in",T.never,"Candidates for a reminder") +
         kpi("chart","Active this week",T.active7d,"Last 7 days") + kpi("star","Active today",T.active24h,"Last 24 hours")}</div>
@@ -343,14 +343,16 @@
         <div class="panel"><h3>Logged in, by group</h3><div class="sub">Share of each group that has opened the portal at least once</div><div class="funnel" id="actGroups"></div></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><div><h3>Portal activation &amp; login</h3><div class="sub" id="actCount"></div></div>
+        <div class="mailbar" id="actMail"></div>
+        <div class="panel-head"><div><h3>Login emails, logins &amp; reminders</h3><div class="sub" id="actCount"></div></div>
           <div class="inline">
             <select class="select" id="actGroup" style="width:auto"><option value="all">Everyone</option><option value="Ambassador">Ambassadors</option><option value="Participant">Participants</option></select>
             <input class="input" id="actSearch" placeholder="Search name, referral no., email" style="max-width:240px">
           </div></div>
         <div class="seg act-seg" id="actFilter"></div>
         <div class="remind" id="actRemind"></div>
-        <p class="act-key"><b>Activated</b> = login details sent · <b>Logged in</b> = signed in at least once · <b>Active</b> = used the portal in the last 7 days</p>
+        <div class="selbar" id="actSel" hidden></div>
+        <p class="act-key"><b>Login email</b> = their username + password was emailed · <b>Logged in</b> = signed in at least once · <b>Active</b> = used the portal in the last 7 days · tick people to email or remind just them</p>
         <div class="tbl-wrap"><table class="t" id="actTable"></table></div>
       </div>`;
     N.$("#actGroup").value = actG; N.$("#actGroup").addEventListener("change", e=>{ actG = e.target.value; renderPeople(); });
@@ -384,11 +386,18 @@
   }
   addEventListener("resize", ()=>{ clearTimeout(drawBars._t); drawBars._t = setTimeout(drawBars, 150); });
   const isActive = p => p.lastSeen && new Date(p.lastSeen) >= Date.now() - 7*864e5;
-  const ACT_F = [["all","All",()=>true],["act","Activated",p=>p.activated],["notact","Not activated",p=>!p.activated],
-    ["in","Logged in",p=>!!p.lastSeen],["never","Not logged in",p=>!p.lastSeen],["active","Active",p=>!!isActive(p)],["inactive","Not active",p=>!isActive(p)]];
+  const sentOf = p => p.emailSent !== undefined ? p.emailSent : p.activated;
+  const ACT_F = [["all","All",()=>true],["sent","Email sent",p=>sentOf(p)],["notsent","Email not sent",p=>!sentOf(p)],
+    ["in","Logged in",p=>!!p.lastSeen],["never","Not logged in",p=>!p.lastSeen],["reminded","Reminded",p=>!!p.reminded],
+    ["active","Active",p=>!!isActive(p)],["inactive","Not active",p=>!isActive(p)]];
+  const SEL = new Set();
+  const CHANNELS = { email: "Email", portal: "Portal message", both: "Email + portal message" };
+  let ARM = "";                                   // two-click confirm for anything that sends
+  const arm = (k)=>{ ARM = k; renderPeople(); clearTimeout(arm._t); arm._t = setTimeout(()=>{ if (ARM === k) { ARM = ""; renderPeople(); } }, 8000); };
+  const inGroup = p => actG === "all" || p.type.indexOf(actG) >= 0;
   function filteredPeople(ignoreStatus){
     const q = (N.$("#actSearch") ? N.$("#actSearch").value : "").toLowerCase().trim(), f = ACT_F.find(x=>x[0]===actF)[2];
-    return ACT.people.filter(p=> (actG === "all" || p.type.indexOf(actG) >= 0) && (ignoreStatus || f(p)) &&
+    return ACT.people.filter(p=> inGroup(p) && (ignoreStatus || f(p)) &&
       (!q || (p.name+" "+p.email+" "+p.code).toLowerCase().includes(q)));
   }
   function drawFilters(){
@@ -397,41 +406,95 @@
     N.$$("#actFilter button").forEach(b=>b.addEventListener("click", ()=>{ actF = b.dataset.f; renderPeople(); }));
   }
   const yes = (ok, a, b) => ok ? `<span class="badge ok">✓ ${a}</span>` : `<span class="badge no">✕ ${b}</span>`;
-  let remArm = false;
+  const day = s => s ? new Date(s).toLocaleDateString("en-GB",{day:"numeric",month:"short"}) : "";
+
+  /* automatic login emails: status + people still without one */
+  function drawMail(){
+    const M = ACT.mail || { quota: "—", autoAmbassadors: true, autoParticipants: true }, on = M.autoAmbassadors && M.autoParticipants;
+    const missing = ACT.people.filter(p=>!sentOf(p) && inGroup(p));
+    N.$("#actMail").innerHTML = `<div class="mb-line"><span class="dot ${on ? "on" : "off"}"></span>
+      <div><b>Automatic login emails are ${on ? "ON" : M.autoAmbassadors || M.autoParticipants ? "partly ON" : "OFF"}</b>
+      <span>${on ? "Everyone who registers gets their username + password by email within 5 minutes. You don't need to do anything." : "Turn on SEND_AMBASSADOR_EMAIL and SEND_PARTICIPANT_EMAIL in Code.gs."}
+      Gmail emails left today: <b class="q">${N.esc(String(M.quota))}</b> (about 100 a day; resets every 24 hours).</span></div></div>
+      ${missing.length ? `<div class="mb-line warn"><span class="dot off"></span><div><b>${N.fmt(missing.length)} ${missing.length === 1 ? "person has" : "people have"} no login email yet</b>
+        <span>Usually because Gmail's daily limit ran out; they get it automatically when it resets. Or send it now.</span></div>
+        <button class="btn ${ARM === "loginAll" ? "btn-gold" : "btn-ghost"} btn-sm" data-act="loginAll">${N.icon("mail")}${ARM === "loginAll" ? `Confirm: email ${N.fmt(missing.length)}` : "Send login email now"}</button></div>` : ""}`;
+  }
+  /* bulk reminder for everyone in this group who hasn't logged in */
+  let remCh = "email";
   function drawRemind(){
-    const el = N.$("#actRemind"); if (!el) return;
-    const never = ACT.people.filter(p=>!p.lastSeen && (actG === "all" || p.type.indexOf(actG) >= 0));
+    const never = ACT.people.filter(p=>!p.lastSeen && inGroup(p));
     const who = actG === "Ambassador" ? "ambassadors" : actG === "Participant" ? "participants" : "people";
     const R = ACT.reminderRound;
-    el.innerHTML = `<div><b>${N.fmt(never.length)} ${who} haven't logged in yet.</b>
-      <span>${R ? "A reminder round is in progress. It continues automatically as Gmail's daily limit allows." : "Email them a reminder with their username, password and the portal link. Anyone reminded in the last 3 days is skipped."}</span></div>
-      <button class="btn ${remArm ? "btn-gold" : "btn-primary"} btn-sm" id="remBtn" ${never.length ? "" : "disabled"}>${N.icon("mail")}${remArm ? `Confirm: email ${N.fmt(never.length)} ${who}` : R ? "Continue sending" : "Email login reminder"}</button>`;
-    N.$("#remBtn").addEventListener("click", async (e)=>{
-      if (!remArm) { remArm = true; drawRemind(); setTimeout(()=>{ if (remArm) { remArm = false; drawRemind(); } }, 8000); return; }
-      remArm = false; const b = e.currentTarget; b.disabled = true; b.textContent = "Sending emails…";
-      try {
-        const r = await N.post({ action: "sendReminders", key: KEY, group: actG });
-        N.toast(`Reminder sent to ${N.fmt(r.sent)}` + (r.left ? ` · ${N.fmt(r.left)} more will be sent automatically when Gmail's daily limit resets` : ""));
-        await loadActivity(true);
-      } catch(err){ N.toast("Could not send: " + err.message); drawRemind(); }
-    });
+    N.$("#actRemind").innerHTML = `<div><b>${N.fmt(never.length)} ${who} haven't logged in yet.</b>
+      <span>${R ? "An email reminder round is in progress. It continues automatically as Gmail's daily limit allows." : "Remind them whenever you want. Email: their username, password and the portal link (anyone emailed in the last 3 days is skipped). Portal message: a personal notice they see when they open the portal."}</span></div>
+      <div class="inline"><select class="select" id="remCh" style="width:auto">${Object.entries(CHANNELS).map(([k,l])=>`<option value="${k}" ${k===remCh?"selected":""}>${l}</option>`).join("")}</select>
+      <button class="btn ${ARM === "remAll" ? "btn-gold" : "btn-primary"} btn-sm" data-act="remAll" ${never.length ? "" : "disabled"}>${N.icon("bell")}${ARM === "remAll" ? `Confirm: remind ${N.fmt(never.length)} ${who}` : R && remCh !== "portal" ? "Continue reminding" : "Remind them"}</button></div>`;
+    N.$("#remCh").addEventListener("change", e=>{ remCh = e.target.value; ARM = ""; drawRemind(); });
+  }
+  /* actions for ticked people */
+  function drawSel(){
+    const el = N.$("#actSel"), n = SEL.size; el.hidden = !n; if (!n) return;
+    el.innerHTML = `<b>${N.fmt(n)} selected</b>
+      <button class="btn ${ARM === "selLogin" ? "btn-gold" : "btn-ghost"} btn-sm" data-act="selLogin">${N.icon("mail")}${ARM === "selLogin" ? "Confirm: send login email" : "Send login email"}</button>
+      ${Object.entries(CHANNELS).map(([k,l])=>`<button class="btn ${ARM === "sel_" + k ? "btn-gold" : "btn-ghost"} btn-sm" data-act="sel_${k}">${N.icon(k === "portal" ? "bell" : "send")}${ARM === "sel_" + k ? "Confirm" : "Remind: " + l}</button>`).join("")}
+      <button class="link-btn" data-act="selClear">Clear</button>`;
+  }
+  async function doAct(act, btn){
+    const label = btn.innerHTML; btn.disabled = true; btn.textContent = "Working…";
+    try {
+      let r, msg;
+      if (act === "loginAll" || act === "selLogin") {
+        const emails = act === "loginAll" ? ACT.people.filter(p=>!sentOf(p) && inGroup(p)).map(p=>p.email) : [...SEL];
+        r = await N.post({ action: "sendLogin", key: KEY, emails });
+        msg = `Login email sent to ${N.fmt(r.sent)}` + (r.noQuota ? ` · ${N.fmt(r.noQuota)} not sent: Gmail's daily limit is used up (they'll get it automatically tomorrow)` : "") + (r.failed ? ` · ${N.fmt(r.failed)} failed` : "");
+      } else if (act === "remAll") {
+        r = await N.post({ action: "sendReminders", key: KEY, group: actG, channel: remCh });
+        msg = [r.posted ? `Portal message posted for ${N.fmt(r.posted)}` : "", remCh !== "portal" ? `Email reminder sent to ${N.fmt(r.sent)}` : ""].filter(Boolean).join(" · ") +
+          (r.left ? ` · ${N.fmt(r.left)} more emails go out automatically when Gmail's daily limit resets` : "");
+      } else {
+        const ch = act.slice(4);
+        r = await N.post({ action: "remindPeople", key: KEY, emails: [...SEL], channel: ch });
+        msg = [r.posted ? `Portal message posted for ${N.fmt(r.posted)}` : "", ch !== "portal" ? `Email reminder sent to ${N.fmt(r.emailed)}` : ""].filter(Boolean).join(" · ") +
+          (r.noQuota ? ` · ${N.fmt(r.noQuota)} emails not sent: Gmail's daily limit is used up` : "") + (r.failed ? ` · ${N.fmt(r.failed)} failed` : "");
+      }
+      if (act !== "remAll" && act !== "loginAll") SEL.clear();
+      N.toast(msg); await loadActivity(true);
+    } catch(err){ N.toast("Could not send: " + err.message); btn.disabled = false; btn.innerHTML = label; }
   }
   function renderPeople(){
-    drawFilters(); drawRemind();
+    drawMail(); drawFilters(); drawRemind(); drawSel();
     const list = filteredPeople(), shown = list.slice(0, 400);
     N.$("#actCount").textContent = N.fmt(list.length) + " people" + (list.length > shown.length ? " · showing the first 400 (use search or Export CSV for all)" : "");
-    N.$("#actTable").innerHTML = `<thead><tr><th>Name</th><th>Referral no.</th><th>Type</th><th>Activated</th><th>Logged in</th><th>Active</th><th>Last active</th><th class="num">Sign-ins</th></tr></thead>
-      <tbody>${shown.map(p=>`<tr><td style="white-space:nowrap">${N.esc(p.name || "—")}<div class="act-mail">${N.esc(p.email)}</div></td>
+    const allOn = shown.length && shown.every(p=>SEL.has(p.email));
+    N.$("#actTable").innerHTML = `<thead><tr><th class="ck"><input type="checkbox" id="selAll" ${allOn ? "checked" : ""} aria-label="Select everyone shown"></th><th>Name</th><th>Referral no.</th><th>Type</th><th>Login email</th><th>Logged in</th><th>Active</th><th>Reminded</th><th>Last active</th><th class="num">Sign-ins</th></tr></thead>
+      <tbody>${shown.map(p=>`<tr class="${SEL.has(p.email) ? "sel" : ""}"><td class="ck"><input type="checkbox" data-em="${N.esc(p.email)}" ${SEL.has(p.email) ? "checked" : ""} aria-label="Select ${N.esc(p.name || p.email)}"></td>
+        <td style="white-space:nowrap">${N.esc(p.name || "—")}<div class="act-mail">${N.esc(p.email)}</div></td>
         <td>${p.code?`<span class="code">${N.esc(p.code)}</span>`:`<span style="color:var(--dim)" title="${N.esc(p.forms)}">—</span>`}</td><td>${N.esc(p.type)}</td>
-        <td>${yes(p.activated,"Activated","Not activated")}</td><td>${yes(p.lastSeen,"Logged in","Not logged in")}</td><td>${yes(isActive(p),"Active","Not active")}</td>
-        <td class="when">${p.lastSeen ? N.timeAgo(p.lastSeen) : '<span class="pill-never">Never</span>' + (p.reminded ? `<div class="act-mail">Reminded ${N.timeAgo(p.reminded)}</div>` : "")}</td>
-        <td class="num">${p.logins}</td></tr>`).join("") || '<tr><td colspan="8" class="empty">Nobody matches.</td></tr>'}</tbody>`;
+        <td>${sentOf(p) ? `<span class="badge ok">✓ Sent${p.activatedAt ? " " + day(p.activatedAt) : ""}</span>` : '<span class="badge no">✕ Not sent</span>'}</td>
+        <td>${yes(p.lastSeen,"Yes","No")}</td><td>${yes(isActive(p),"Active","No")}</td>
+        <td class="when">${p.reminded ? `${day(p.reminded)}<div class="act-mail">${N.esc(p.remindedVia || "Email")}${p.reminders > 1 ? " · " + p.reminders + "×" : ""}</div>` : '<span class="pill-never">—</span>'}</td>
+        <td class="when">${p.lastSeen ? N.timeAgo(p.lastSeen) : '<span class="pill-never">Never</span>'}</td>
+        <td class="num">${p.logins}</td></tr>`).join("") || '<tr><td colspan="10" class="empty">Nobody matches.</td></tr>'}</tbody>`;
+    N.$("#selAll").addEventListener("change", e=>{ shown.forEach(p=>e.target.checked ? SEL.add(p.email) : SEL.delete(p.email)); ARM = ""; renderPeople(); });
   }
+  /* one listener for every button and checkbox in the section */
+  N.$("#actBody").addEventListener("change", e=>{
+    const c = e.target.closest("input[data-em]"); if (!c) return;
+    c.checked ? SEL.add(c.dataset.em) : SEL.delete(c.dataset.em); c.closest("tr").classList.toggle("sel", c.checked); ARM = ""; drawSel();
+  });
+  N.$("#actBody").addEventListener("click", e=>{
+    const b = e.target.closest("[data-act]"); if (!b || !ACT) return;
+    const act = b.dataset.act;
+    if (act === "selClear") { SEL.clear(); ARM = ""; return renderPeople(); }
+    if (ARM !== act) return arm(act);
+    ARM = ""; doAct(act, b);
+  });
   N.$("#actRefresh").addEventListener("click", ()=>loadActivity(true).then(()=>N.toast("Updated")));
   N.$("#actCsv").addEventListener("click", ()=>{
     if (!ACT) return;
-    const rows = [["Name","Referral no.","Email","Type","Registered for","Activated","Logged in","Active (7 days)","Last active","First login","Sign-ins","Visits","Days active","Last reminder","Reminders"],
-      ...filteredPeople().map(p=>[p.name,p.code,p.email,p.type,p.forms,p.activated?"Yes":"No",p.lastSeen?"Yes":"No",isActive(p)?"Yes":"No",fmtWhen(p.lastSeen) || "Never",fmtWhen(p.firstSeen),p.logins,p.visits,p.daysActive,fmtWhen(p.reminded),p.reminders||0])];
+    const rows = [["Name","Referral no.","Email","Type","Registered for","Login email sent","Login email date","Logged in","Active (7 days)","Last active","First login","Sign-ins","Visits","Days active","Last reminder","Reminded by","Reminders"],
+      ...filteredPeople().map(p=>[p.name,p.code,p.email,p.type,p.forms,sentOf(p)?"Yes":"No",fmtWhen(p.activatedAt),p.lastSeen?"Yes":"No",isActive(p)?"Yes":"No",fmtWhen(p.lastSeen) || "Never",fmtWhen(p.firstSeen),p.logins,p.visits,p.daysActive,fmtWhen(p.reminded),p.remindedVia||"",p.reminders||0])];
     const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download = "nuqta-portal-activity.csv"; a.click();
   });

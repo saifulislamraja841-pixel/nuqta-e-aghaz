@@ -183,3 +183,18 @@ table.t{width:100%;border-collapse:collapse;font-size:13.5px}
 .remind{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:14px 16px;margin:6px 0 12px;border:1px solid rgba(227,191,106,.3);border-radius:14px;background:rgba(227,191,106,.06)}
 .remind b{display:block;font-weight:600;font-size:14px}
 .remind span{font-size:12.5px;color:var(--muted)}
+.mailbar{display:grid;gap:8px;margin-bottom:18px}
+.mb-line{display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid rgba(79,209,161,.28);border-radius:14px;background:rgba(79,209,161,.05)}
+.mb-line.warn{border-color:rgba(255,107,138,.3);background:rgba(255,107,138,.05)}
+.mb-line>div{flex:1}
+.mb-line b{font-weight:600;font-size:14px}
+.mb-line span{display:block;font-size:12.5px;color:var(--muted)}
+.mb-line .q{display:inline;color:var(--text)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.dot.on{background:var(--ok);box-shadow:0 0 0 4px rgba(79,209,161,.18)}
+.dot.off{background:var(--bad);box-shadow:0 0 0 4px rgba(255,107,138,.15)}
+.selbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;margin:0 0 12px;border:1px solid var(--line-hi);border-radius:14px;background:rgba(164,60,240,.12);position:sticky;top:8px;z-index:3;backdrop-filter:blur(10px)}
+.selbar b{margin-right:6px;font-weight:600}
+.t .ck{width:34px;padding-right:0}
+.t .ck input{width:16px;height:16px;accent-color:#9d4fe6;cursor:pointer}
+.t tr.sel td{background:rgba(164,60,240,.08)}

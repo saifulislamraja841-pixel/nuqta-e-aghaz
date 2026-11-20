@@ -616,7 +616,7 @@ function activity_() {
     const x = Object.assign({}, extra || {}), sent = x.sent; delete x.sent;
     Object.assign(p, x);
     // "Activated" = a portal password exists and the login details were emailed (Login Sent has a date)
-    if (sent) { p.activated = true; if (sent instanceof Date && (!p.activatedAt || sent < p.activatedAt)) p.activatedAt = sent; }
+    if (sent) { p.activated = true; p.emailSent = true; if (sent instanceof Date && (!p.activatedAt || sent < p.activatedAt)) p.activatedAt = sent; }
   };
   ambRows_().forEach(a => add(a.email, a.name, "Ambassador", { code: a.code, sent: a.pass && a.sent }));
   partRows_().filter(p => !/skip|stop/.test(p.status)).forEach(p => add(p.email, p.name, "Participant", { forms: p.forms, sent: p.pass && p.sent }));
@@ -645,13 +645,15 @@ function activity_() {
     totals: { accounts, activated: list.filter(p => p.activated || p.logins > 0).length, loggedIn: list.filter(p => p.lastSeen).length, never: list.filter(p => !p.lastSeen).length,
       active24h: since(864e5), active7d: since(7 * 864e5), logins: log.filter(r => String(r[2]) === "login").length },
     groups: { ambassadors: group("Ambassador"), participants: group("Participant") },
+    mail: { quota: MailApp.getRemainingDailyQuota(), autoAmbassadors: SEND_AMBASSADOR_EMAIL, autoParticipants: SEND_PARTICIPANT_EMAIL },
     reminderRound: PropertiesService.getScriptProperties().getProperty("REMIND_ROUND") ? { group: PropertiesService.getScriptProperties().getProperty("REMIND_GROUP") || "all" } : null,
     daily,
     people: list.map(p => ({ email: p.email, name: p.name, type: p.types.join(" + "), code: p.code, forms: p.forms,
       firstSeen: p.firstSeen ? p.firstSeen.toISOString() : "", lastSeen: p.lastSeen ? p.lastSeen.toISOString() : "",
       logins: p.logins, visits: p.visits, daysActive: Object.keys(p.days).length,
       activated: p.activated || p.logins > 0, activatedAt: p.activatedAt ? p.activatedAt.toISOString() : "",
-      reminded: rem[p.email] && rem[p.email].last ? new Date(rem[p.email].last).toISOString() : "", reminders: rem[p.email] ? rem[p.email].n : 0 }))
+      reminded: rem[p.email] && rem[p.email].last ? new Date(rem[p.email].last).toISOString() : "", reminders: rem[p.email] ? rem[p.email].n : 0,
+      remindedVia: rem[p.email] ? rem[p.email].via : "", emailSent: !!p.emailSent }))
       .sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || "") || a.name.localeCompare(b.name)),
   };
   try { cache.put("activity", JSON.stringify(out), 120); } catch (e) { /* too big to cache */ }
@@ -668,20 +670,85 @@ const REM_TAB = "Login Reminders";
 function remSheet_() {
   const ss = SpreadsheetApp.getActive();
   let sh = ss.getSheetByName(REM_TAB);
-  if (!sh) { sh = ss.insertSheet(REM_TAB); sh.appendRow(["Email", "Name", "Last Reminder", "Reminders"]); sh.setFrozenRows(1); sh.getRange(1, 1, 1, 4).setFontWeight("bold"); }
+  if (!sh) { sh = ss.insertSheet(REM_TAB); sh.appendRow(["Email", "Name", "Last Reminder", "Reminders", "Sent By"]); sh.setFrozenRows(1); sh.getRange(1, 1, 1, 5).setFontWeight("bold"); }
+  else if (sh.getLastColumn() < 5) sh.getRange(1, 5).setValue("Sent By").setFontWeight("bold");
   return sh;
 }
 function reminded_() {
   const m = {};
-  remSheet_().getDataRange().getValues().slice(1).forEach((r, i) => { if (r[0]) m[String(r[0]).trim().toLowerCase()] = { row: i + 2, last: r[2] instanceof Date ? r[2].getTime() : 0, n: Number(r[3]) || 0 }; });
+  remSheet_().getDataRange().getValues().slice(1).forEach((r, i) => { if (r[0]) m[String(r[0]).trim().toLowerCase()] = { row: i + 2, last: r[2] instanceof Date ? r[2].getTime() : 0, n: Number(r[3]) || 0, via: String(r[4] || "Email") }; });
   return m;
+}
+/* Records that someone was reminded (via "Email", "Portal" or "Email + Portal") */
+function noteReminder_(sh, done, p, via) {
+  const d = done[p.email], now = new Date();
+  if (d) { sh.getRange(d.row, 2, 1, 4).setValues([[p.name || "", now, d.n + 1, via]]); d.last = now.getTime(); d.n++; d.via = via; }
+  else { sh.appendRow([p.email, p.name || "", now, 1, via]); done[p.email] = { row: sh.getLastRow(), last: now.getTime(), n: 1, via }; }
+}
+/* A personal notice in that person's portal (shows under "Announcements for you") */
+function portalReminder_(p) {
+  annSheet_().appendRow(["A" + Date.now() + Math.floor(Math.random() * 1000), new Date(), "Your portal is ready, please sign in",
+    "Assalam o Alaikum " + (p.name || "") + "! Your Nuqta-e-Aghaz portal has your registrations, event updates" + (p.code ? ", your ambassador link and referral count" : "") +
+    ". Sign in with username " + p.user + " and the password we emailed you. Forgot it? Tap \"Forgot your password?\" on the sign-in page.", "email:" + p.email, SITE_URL + "portal.html", false]);
+}
+/* Every portal account: { email, name, user, pass, code, forms, kind: "amb" | "part" } */
+function allAccounts_() {
+  const out = {};
+  ambRows_().forEach(a => { if (!out[a.email]) out[a.email] = { email: a.email, name: a.name, user: a.code, code: a.code, pass: a.pass, kind: "amb" }; });
+  partRows_().forEach(p => { if (!out[p.email] && !/skip|stop/.test(p.status)) out[p.email] = { email: p.email, name: p.name, user: p.email, code: "", pass: p.pass, forms: p.forms, kind: "part" }; });
+  return out;
+}
+/* Marks the login email as sent in the sheet the login comes from */
+function markLoginSent_(email) {
+  const now = new Date();
+  const sh = ambSheet_(), all = sh.getDataRange().getValues(), H = all[0].map(h => String(h).trim()), f = re => H.findIndex(h => re.test(h));
+  const c = { email: f(/e-?mail/i), sent: f(/^login sent$/i), ref: f(/^reference number$/i) };
+  if (c.email >= 0 && c.sent >= 0) all.slice(1).forEach((r, i) => {
+    if (String(r[c.email]).trim().toLowerCase() === email && (c.ref < 0 || String(r[c.ref]).trim())) sh.getRange(i + 2, c.sent + 1).setValue(now);
+  });
+  const ps = partSheet_();
+  ps.getDataRange().getValues().slice(1).forEach((r, i) => { if (String(r[0]).trim().toLowerCase() === email) ps.getRange(i + 2, 5).setValue(now); });
+}
+/* Dashboard: send (or re-send) the login email to the chosen people now */
+function sendLoginNow_(emails) {
+  const acc = allAccounts_(), lock = LockService.getScriptLock(); lock.waitLock(20000);
+  let sent = 0, failed = 0, noQuota = 0;
+  try {
+    (emails || []).map(e => String(e).trim().toLowerCase()).forEach(e => {
+      const a = acc[e]; if (!a || !a.pass) { failed++; return; }
+      if (MailApp.getRemainingDailyQuota() < 1) { noQuota++; return; }
+      const ok = a.kind === "amb" ? sendLoginEmail_(a.email, a.name, a.code, a.pass, false) : sendParticipantEmail_(a.email, a.name, a.pass, a.forms);
+      if (ok) { markLoginSent_(a.email); sent++; } else failed++;
+    });
+  } finally { lock.releaseLock(); }
+  CacheService.getScriptCache().remove("activity");
+  return { ok: true, sent, failed, noQuota, quota: MailApp.getRemainingDailyQuota() };
+}
+/* Dashboard: remind the chosen people now, by "email", "portal" or "both" */
+function remindPeople_(emails, channel) {
+  channel = ["email", "portal", "both"].indexOf(channel) >= 0 ? channel : "email";
+  const acc = allAccounts_(), sh = remSheet_(), done = reminded_();
+  let emailed = 0, posted = 0, failed = 0, noQuota = 0;
+  (emails || []).map(e => String(e).trim().toLowerCase()).forEach(e => {
+    const a = acc[e]; if (!a) { failed++; return; }
+    let via = [];
+    if (channel !== "email") { portalReminder_(a); posted++; via.push("Portal"); }
+    if (channel !== "portal") {
+      if (MailApp.getRemainingDailyQuota() <= 0) noQuota++;
+      else if (a.pass && sendReminderEmail_(a)) { emailed++; via.unshift("Email"); }
+      else failed++;
+    }
+    if (via.length) noteReminder_(sh, done, a, via.join(" + "));
+  });
+  CacheService.getScriptCache().remove("activity");
+  return { ok: true, emailed, posted, failed, noQuota, quota: MailApp.getRemainingDailyQuota() };
 }
 /* Everyone with a password who has never signed in: [{ email, name, user, pass, group }] */
 function neverLoggedIn_(group) {
   const seen = {};
   logSheet_().getDataRange().getValues().slice(1).forEach(r => { if (r[1]) seen[String(r[1]).trim().toLowerCase()] = 1; });
   const out = {}, want = g => !group || group === "all" || group === g;
-  if (want("Ambassador")) ambRows_().forEach(a => { if (a.pass && !seen[a.email] && !out[a.email]) out[a.email] = { email: a.email, name: a.name, user: a.code, pass: a.pass }; });
+  if (want("Ambassador")) ambRows_().forEach(a => { if (a.pass && !seen[a.email] && !out[a.email]) out[a.email] = { email: a.email, name: a.name, user: a.code, code: a.code, pass: a.pass }; });
   if (want("Participant")) partRows_().forEach(p => { if (p.pass && !seen[p.email] && !out[p.email] && !/skip|stop/.test(p.status)) out[p.email] = { email: p.email, name: p.name, user: p.email, pass: p.pass }; });
   return Object.keys(out).map(k => out[k]);
 }
@@ -713,14 +780,14 @@ function runReminders_(group) {
   if (!lock.tryLock(20000)) return { sent: 0, left: -1 };
   try {
     const sh = remSheet_(), done = reminded_(), now = Date.now();
-    const todo = neverLoggedIn_(group).filter(p => { const d = done[p.email]; return !d || (d.last < round && now - d.last > 3 * 864e5); });
+    // a portal-only notice doesn't count: those people still get the email
+    const todo = neverLoggedIn_(group).filter(p => { const d = done[p.email]; return !d || d.via === "Portal" || (d.last < round && now - d.last > 3 * 864e5); });
     let sent = 0;
     for (const p of todo) {
       if (MailApp.getRemainingDailyQuota() <= MAIL_RESERVE) break;
       if (!sendReminderEmail_(p)) continue;
       const d = done[p.email];
-      if (d) sh.getRange(d.row, 2, 1, 3).setValues([[p.name || "", new Date(), d.n + 1]]);
-      else { sh.appendRow([p.email, p.name || "", new Date(), 1]); done[p.email] = { row: sh.getLastRow(), last: now, n: 1 }; }
+      noteReminder_(sh, done, p, d && d.via === "Portal" && now - d.last < 864e5 ? "Email + Portal" : "Email");
       sent++;
     }
     const left = todo.length - sent;
@@ -731,11 +798,20 @@ function runReminders_(group) {
 }
 function continueReminders_() { if (PropertiesService.getScriptProperties().getProperty("REMIND_ROUND")) runReminders_(); }
 /* From the dashboard: start a new round (or carry on the current one) */
-function startReminders_(group) {
+function startReminders_(group, channel) {
   const pr = PropertiesService.getScriptProperties();
+  let posted = 0;
+  if (channel === "portal" || channel === "both") {        // portal notices: everyone at once, no Gmail limit
+    const sh = remSheet_(), done = reminded_();
+    neverLoggedIn_(group).forEach(p => {
+      const d = done[p.email]; if (d && /Portal/.test(d.via) && Date.now() - d.last < 864e5) return;   // already got a portal notice today
+      portalReminder_(p); noteReminder_(sh, done, p, "Portal"); posted++;
+    });
+    if (channel === "portal") { CacheService.getScriptCache().remove("activity"); return { ok: true, sent: 0, posted, left: 0, quota: MailApp.getRemainingDailyQuota() }; }
+  }
   if (!pr.getProperty("REMIND_ROUND")) { pr.setProperty("REMIND_ROUND", String(Date.now())); pr.setProperty("REMIND_GROUP", group || "all"); }
   const r = runReminders_();
-  return { ok: true, sent: r.sent, left: Math.max(0, r.left), quota: MailApp.getRemainingDailyQuota() };
+  return { ok: true, sent: r.sent, posted, left: Math.max(0, r.left), quota: MailApp.getRemainingDailyQuota() };
 }
 /* Can also be run by hand from the editor */
 function sendLoginReminders() { Logger.log(JSON.stringify(startReminders_("all"))); }
@@ -919,7 +995,9 @@ function doPost(e) {
     if (p.action === "resetConfirm") return json_(resetConfirm_(p.user, p.code, p.pass));
     if (p.action === "changePassword") return json_(changePassword_(p.token, p.pass));
     if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" });
-    if (p.action === "sendReminders") return json_(startReminders_(["all", "Ambassador", "Participant"].indexOf(p.group) >= 0 ? p.group : "all"));
+    if (p.action === "sendReminders") return json_(startReminders_(["all", "Ambassador", "Participant"].indexOf(p.group) >= 0 ? p.group : "all", p.channel || "email"));
+    if (p.action === "remindPeople") return json_(remindPeople_([].concat(p.emails || []).slice(0, 200), p.channel));
+    if (p.action === "sendLogin") return json_(sendLoginNow_([].concat(p.emails || []).slice(0, 200)));
     if (p.action === "replyMessage" || p.action === "messageStatus") {
       const r = p.action === "replyMessage" ? replyMessage_(p.id, p.reply, p.attachment) : setMessageStatus_(p.id, p.status);
       return json_(r.error ? r : { ok: true, messages: readMessages_() });
