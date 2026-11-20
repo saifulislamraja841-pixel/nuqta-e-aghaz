@@ -1,0 +1,32 @@
+plugins { id "com.android.application" }
+
+def ks = System.getenv("KEYSTORE_FILE")
+
+android {
+    namespace "org.nuqtaeaghaz.app"
+    compileSdk 34
+    defaultConfig {
+        applicationId "org.nuqtaeaghaz.app"
+        minSdk 23
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
+        versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+    }
+    signingConfigs {
+        release {
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS") ?: "nuqta"
+                keyPassword System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig ks ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
