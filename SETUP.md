@@ -30,7 +30,13 @@ Paste the `/exec` URL into `scriptUrl` in `config.js`, commit and push. The VPS 
 ## 3. Messages and portal activity
 Two new tabs are created in the data spreadsheet when the updated script first runs:
 
-- **Messages**: questions people send from **My Portal → Ask the team**. Answer them in **Dashboard → Messages**. The reply appears in their portal and is emailed to them (set `EMAIL_REPLIES = false` to stop the emails). You can also type a reply straight into the **Reply** column. Status is `Open`, `Answered` or `Closed`. To get an email for every new message, set `MESSAGE_ALERT_EMAIL` (e.g. `"info@nuqtaeaghaz.org"`). Each person can send at most 5 messages an hour.
+- **Messages**: questions people send from **My Portal → Ask the team**. Answer them in **Dashboard → Messages**. Everything stays in the portal: the reply appears in their portal, and no email is sent (set `EMAIL_REPLIES = true` if you ever want replies emailed too). You can also type a reply straight into the **Reply** column. Status is `Open`, `Answered` or `Closed`. Each person can send at most 5 messages an hour.
+- **WhatsApp alert on the official number**: every new portal message is sent as a WhatsApp message to `WHATSAPP_ALERT_NUMBER` (0348 4243350) through the free CallMeBot API. One-time setup, done on the phone that has the official WhatsApp:
+  1. Open the CallMeBot WhatsApp page (https://www.callmebot.com/blog/free-api-whatsapp-messages/), save the bot's number shown there in the phone's contacts.
+  2. From the official WhatsApp, send the bot: `I allow callmebot to send me messages`
+  3. The bot replies with an API key. Paste it into `WHATSAPP_APIKEY` at the top of `Code.gs` **in the Apps Script editor only** (don't put it on GitHub), then Save.
+  4. Select `testWhatsAppAlert` and click **Run**. Google asks once for permission to "connect to an external service": allow it. A test message should arrive on the official number.
+  If the key doesn't arrive within 2 minutes, try again after 24 hours. Leaving `WHATSAPP_APIKEY` empty turns alerts off; the dashboard inbox always shows every message.
 - **Portal Activity**: one row for each sign-in (`login`) and for each return visit while still signed in (`visit`, counted at most once every 30 minutes per person). **Dashboard → Portal activity** turns this into the report: accounts, who has logged in, who never has, active today and this week, people per day, and a searchable list you can export to CSV, e.g. to send a reminder to everyone who never logged in.
 
 Activity is only recorded from the moment the updated script is deployed. Earlier logins were not tracked.

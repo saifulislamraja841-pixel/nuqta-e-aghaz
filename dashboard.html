@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="assets/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261120m"><link rel="stylesheet" href="assets/app.css?v=20261120m">
+<link rel="stylesheet" href="assets/style.css?v=20261120n"><link rel="stylesheet" href="assets/app.css?v=20261120n">
 </head>
 <body class="app">
 <div class="aurora"></div><div class="grain"></div>
@@ -110,7 +110,7 @@
         <input class="input" id="msgSearch" placeholder="Search name, email or text" style="max-width:240px">
         <button class="btn btn-ghost btn-sm" id="msgRefresh"><span data-icon="refresh"></span>Refresh</button></div>
       <div class="kpis" id="msgKpis" style="grid-template-columns:repeat(4,1fr)"></div>
-      <div class="panel"><h3 id="msgTitle">Waiting for a reply</h3><div class="sub">Sent by registered people from their portal. Your reply shows in their portal and is emailed to them.</div><div id="msgList"></div></div>
+      <div class="panel"><h3 id="msgTitle">Waiting for a reply</h3><div class="sub">Sent by registered people from their portal. Your reply shows in their portal.</div><div id="msgList"></div></div>
     </section>
 
     <!-- PORTAL ACTIVITY -->
@@ -123,8 +123,8 @@
   </main>
 </div>
 
-<script src="config.js?v=20261120m"></script>
-<script src="assets/core.js?v=20261120m"></script>
+<script src="config.js?v=20261120n"></script>
+<script src="assets/core.js?v=20261120n"></script>
 <script>
 (function(){
   const N = Nuqta; let KEY = N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
@@ -294,7 +294,6 @@
         <div class="inline">
           ${m.status === "Closed" ? "" : `<button class="btn btn-primary btn-sm" data-act="reply">${N.icon("send")}Send reply</button>`}
           ${m.status === "Closed" ? `<button class="btn btn-ghost btn-sm" data-act="Open">Reopen</button>` : `<button class="btn btn-ghost btn-sm" data-act="Closed">Close without reply</button>`}
-          <a class="btn btn-ghost btn-sm" href="mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent("Re: " + m.topic)}">${N.icon("mail")}Email</a>
         </div>
       </div></div>`).join("") || `<div class="empty">${msgF === "Open" ? "All caught up. No messages are waiting." : "No messages here."}</div>`;
   }

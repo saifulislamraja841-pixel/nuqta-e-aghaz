@@ -12,8 +12,11 @@ const ADMIN_KEY = "change-this-to-a-long-secret";        // password for the tea
 const SITE_URL  = "https://www.nuqtaeaghaz.org/";        // where index.html is hosted (ends with /)
 const SEND_PARTICIPANT_EMAIL = true;                      // email new participants (main event, competitions, talent) their portal login
 const SEND_AMBASSADOR_EMAIL = true;                       // email new ambassadors their reference number + portal login
-const MESSAGE_ALERT_EMAIL = "";                           // e.g. "info@nuqtaeaghaz.org": get an email for every new portal message ("" = off; the dashboard inbox always shows them)
-const EMAIL_REPLIES = true;                               // also email your reply to the person (their portal always shows it)
+const EMAIL_REPLIES = false;                              // messages and replies stay in the portal only (true = also email the reply)
+/* WhatsApp alert to the official number for every new portal message (free CallMeBot API, see SETUP.md).
+   Paste the API key here in the Apps Script editor only; do not commit it to GitHub. "" = alerts off. */
+const WHATSAPP_ALERT_NUMBER = "923484243350";             // official number, international format, no +
+const WHATSAPP_APIKEY = "";                               // the key CallMeBot sends to the official number
 
 /* Labels for each form (used in the dashboard) */
 const TABS = {
@@ -596,14 +599,24 @@ function sendMessage_(token, topic, message) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try { msgSheet_().appendRow(["M" + Date.now(), new Date(), email, acct.name || "", topic, message, "Open", "", ""]); }
   finally { lock.releaseLock(); }
-  if (MESSAGE_ALERT_EMAIL && MailApp.getRemainingDailyQuota() > MAIL_RESERVE) {
-    try {
-      MailApp.sendEmail({ to: MESSAGE_ALERT_EMAIL, replyTo: email, subject: "Portal message: " + topic + " — " + (acct.name || email),
-        htmlBody: "<b>" + (acct.name || "") + "</b> (" + email + ")" + (acct.code ? " · " + acct.code : "") + "<br><b>Topic:</b> " + topic +
-          "<br><br>" + message.replace(/</g, "&lt;").replace(/\n/g, "<br>") + "<br><br>Reply from the dashboard: " + SITE_URL + "dashboard.html" });
-    } catch (e) { Logger.log("Alert email failed: " + e); }
-  }
+  whatsAppAlert_("📩 New portal message — Nuqta-e-Aghaz\n" + (acct.name || email) + (acct.code ? " (" + acct.code + ")" : "") +
+    "\nTopic: " + topic + "\n\n" + message.slice(0, 600) + (message.length > 600 ? "…" : "") + "\n\nReply: " + SITE_URL + "dashboard.html");
   return { ok: true, messages: readMessages_().filter(m => m.email === email) };
+}
+/* Sends a WhatsApp message to the official number. Never stops the portal if it fails. */
+function whatsAppAlert_(text) {
+  if (!WHATSAPP_APIKEY || !WHATSAPP_ALERT_NUMBER) return false;
+  try {
+    const url = "https://api.callmebot.com/whatsapp.php?phone=" + encodeURIComponent(WHATSAPP_ALERT_NUMBER) +
+      "&apikey=" + encodeURIComponent(WHATSAPP_APIKEY) + "&text=" + encodeURIComponent(text);
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) Logger.log("WhatsApp alert failed: " + res.getResponseCode() + " " + res.getContentText().slice(0, 300));
+    return res.getResponseCode() === 200;
+  } catch (e) { Logger.log("WhatsApp alert failed: " + e); return false; }
+}
+/* Run this once from the editor after adding the API key: a test message should arrive on the official number. */
+function testWhatsAppAlert() {
+  Logger.log(whatsAppAlert_("✅ Nuqta-e-Aghaz portal alerts are working. New portal messages will arrive here.") ? "Sent" : "Not sent: check WHATSAPP_APIKEY and the log above");
 }
 function msgRow_(id) {
   const sh = msgSheet_(), ids = sh.getRange(1, 1, sh.getLastRow(), 1).getValues();
