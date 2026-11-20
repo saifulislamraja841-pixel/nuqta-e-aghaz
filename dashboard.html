@@ -327,23 +327,24 @@
     const T = ACT.totals, G = ACT.groups;
     N.$("#actUpdated").textContent = "Updated " + new Date(ACT.generatedAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
     N.$("#actBody").innerHTML = `
-      <div class="kpis">${kpi("users","Portal accounts",T.accounts,"Ambassadors + participants",true) + kpi("check","Have logged in",T.loggedIn, pct(T.loggedIn,T.accounts)+"% of accounts") +
-        kpi("bell","Never logged in",T.never,"Candidates for a reminder") + kpi("star","Active today",T.active24h,"Last 24 hours") +
-        kpi("chart","Active this week",T.active7d,"Last 7 days") + kpi("link","Total sign-ins",T.logins,"Every successful login")}</div>
+      <div class="kpis">${kpi("users","Portal accounts",T.accounts,"Ambassadors + participants",true) + kpi("link","Activated",T.activated, pct(T.activated,T.accounts)+"% got their login details") +
+        kpi("check","Have logged in",T.loggedIn, pct(T.loggedIn,T.accounts)+"% of accounts") +
+        kpi("bell","Never logged in",T.never,"Candidates for a reminder") +
+        kpi("chart","Active this week",T.active7d,"Last 7 days") + kpi("star","Active today",T.active24h,"Last 24 hours")}</div>
       <div class="row r-2-1">
         <div class="panel"><h3>People active in the portal per day</h3><div class="sub">Last 14 days · unique people who signed in or opened the portal · hover a bar</div><div class="chart" id="actChart"></div></div>
         <div class="panel"><h3>Logged in, by group</h3><div class="sub">Share of each group that has opened the portal at least once</div><div class="funnel" id="actGroups"></div></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><div><h3>People</h3><div class="sub" id="actCount"></div></div>
+        <div class="panel-head"><div><h3>Portal activation &amp; login</h3><div class="sub" id="actCount"></div></div>
           <div class="inline">
-            <div class="seg" id="actFilter"><button data-f="all">All</button><button data-f="in">Logged in</button><button data-f="week">Active this week</button><button data-f="never">Never logged in</button></div>
             <select class="select" id="actGroup" style="width:auto"><option value="all">Everyone</option><option value="Ambassador">Ambassadors</option><option value="Participant">Participants</option></select>
-            <input class="input" id="actSearch" placeholder="Search name, email, code" style="max-width:220px">
+            <input class="input" id="actSearch" placeholder="Search name, referral no., email" style="max-width:240px">
           </div></div>
+        <div class="seg act-seg" id="actFilter"></div>
+        <p class="act-key"><b>Activated</b> = login details sent · <b>Logged in</b> = signed in at least once · <b>Active</b> = used the portal in the last 7 days</p>
         <div class="tbl-wrap"><table class="t" id="actTable"></table></div>
       </div>`;
-    N.$$("#actFilter button").forEach(b=>{ b.classList.toggle("on", b.dataset.f === actF); b.addEventListener("click", ()=>{ actF = b.dataset.f; N.$$("#actFilter button").forEach(x=>x.classList.toggle("on", x === b)); renderPeople(); }); });
     N.$("#actGroup").value = actG; N.$("#actGroup").addEventListener("change", e=>{ actG = e.target.value; renderPeople(); });
     N.$("#actSearch").addEventListener("input", renderPeople);
     const rows = [["Ambassadors", G.ambassadors], ["Participants", G.participants]];
@@ -374,26 +375,36 @@
     });
   }
   addEventListener("resize", ()=>{ clearTimeout(drawBars._t); drawBars._t = setTimeout(drawBars, 150); });
-  function filteredPeople(){
-    const q = (N.$("#actSearch") ? N.$("#actSearch").value : "").toLowerCase(), wk = Date.now() - 7*864e5;
-    return ACT.people.filter(p=> (actG === "all" || p.type.indexOf(actG) >= 0) &&
-      (actF === "all" || (actF === "in" && p.lastSeen) || (actF === "never" && !p.lastSeen) || (actF === "week" && p.lastSeen && new Date(p.lastSeen) >= wk)) &&
+  const isActive = p => p.lastSeen && new Date(p.lastSeen) >= Date.now() - 7*864e5;
+  const ACT_F = [["all","All",()=>true],["act","Activated",p=>p.activated],["notact","Not activated",p=>!p.activated],
+    ["in","Logged in",p=>!!p.lastSeen],["never","Not logged in",p=>!p.lastSeen],["active","Active",p=>!!isActive(p)],["inactive","Not active",p=>!isActive(p)]];
+  function filteredPeople(ignoreStatus){
+    const q = (N.$("#actSearch") ? N.$("#actSearch").value : "").toLowerCase().trim(), f = ACT_F.find(x=>x[0]===actF)[2];
+    return ACT.people.filter(p=> (actG === "all" || p.type.indexOf(actG) >= 0) && (ignoreStatus || f(p)) &&
       (!q || (p.name+" "+p.email+" "+p.code).toLowerCase().includes(q)));
   }
+  function drawFilters(){
+    const base = filteredPeople(true);
+    N.$("#actFilter").innerHTML = ACT_F.map(([k,l,f])=>`<button data-f="${k}" class="${k===actF?"on":""}">${l} <span>${N.fmt(base.filter(f).length)}</span></button>`).join("");
+    N.$$("#actFilter button").forEach(b=>b.addEventListener("click", ()=>{ actF = b.dataset.f; renderPeople(); }));
+  }
+  const yes = (ok, a, b) => ok ? `<span class="badge ok">✓ ${a}</span>` : `<span class="badge no">✕ ${b}</span>`;
   function renderPeople(){
+    drawFilters();
     const list = filteredPeople(), shown = list.slice(0, 400);
     N.$("#actCount").textContent = N.fmt(list.length) + " people" + (list.length > shown.length ? " · showing the first 400 (use search or Export CSV for all)" : "");
-    N.$("#actTable").innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Type</th><th>Code / registered for</th><th>Last active</th><th>First login</th><th class="num">Sign-ins</th><th class="num">Visits</th></tr></thead>
-      <tbody>${shown.map(p=>`<tr><td style="white-space:nowrap">${N.esc(p.name || "—")}</td><td style="color:var(--muted)">${N.esc(p.email)}</td><td>${N.esc(p.type)}</td>
-        <td>${p.code?`<span class="code">${N.esc(p.code)}</span>`:`<span style="color:var(--muted)">${N.esc(p.forms)}</span>`}</td>
-        <td class="when">${p.lastSeen ? N.timeAgo(p.lastSeen) : '<span class="pill-never">Never</span>'}</td><td class="when">${fmtWhen(p.firstSeen)}</td>
-        <td class="num">${p.logins}</td><td class="num">${p.visits}</td></tr>`).join("") || '<tr><td colspan="8" class="empty">Nobody matches.</td></tr>'}</tbody>`;
+    N.$("#actTable").innerHTML = `<thead><tr><th>Name</th><th>Referral no.</th><th>Type</th><th>Activated</th><th>Logged in</th><th>Active</th><th>Last active</th><th class="num">Sign-ins</th></tr></thead>
+      <tbody>${shown.map(p=>`<tr><td style="white-space:nowrap">${N.esc(p.name || "—")}<div class="act-mail">${N.esc(p.email)}</div></td>
+        <td>${p.code?`<span class="code">${N.esc(p.code)}</span>`:`<span style="color:var(--dim)" title="${N.esc(p.forms)}">—</span>`}</td><td>${N.esc(p.type)}</td>
+        <td>${yes(p.activated,"Activated","Not activated")}</td><td>${yes(p.lastSeen,"Logged in","Not logged in")}</td><td>${yes(isActive(p),"Active","Not active")}</td>
+        <td class="when">${p.lastSeen ? N.timeAgo(p.lastSeen) : '<span class="pill-never">Never</span>'}</td>
+        <td class="num">${p.logins}</td></tr>`).join("") || '<tr><td colspan="8" class="empty">Nobody matches.</td></tr>'}</tbody>`;
   }
   N.$("#actRefresh").addEventListener("click", ()=>loadActivity(true).then(()=>N.toast("Updated")));
   N.$("#actCsv").addEventListener("click", ()=>{
     if (!ACT) return;
-    const rows = [["Name","Email","Type","Code","Registered for","Last active","First login","Sign-ins","Visits","Days active"],
-      ...filteredPeople().map(p=>[p.name,p.email,p.type,p.code,p.forms,fmtWhen(p.lastSeen) || "Never",fmtWhen(p.firstSeen),p.logins,p.visits,p.daysActive])];
+    const rows = [["Name","Referral no.","Email","Type","Registered for","Activated","Logged in","Active (7 days)","Last active","First login","Sign-ins","Visits","Days active"],
+      ...filteredPeople().map(p=>[p.name,p.code,p.email,p.type,p.forms,p.activated?"Yes":"No",p.lastSeen?"Yes":"No",isActive(p)?"Yes":"No",fmtWhen(p.lastSeen) || "Never",fmtWhen(p.firstSeen),p.logins,p.visits,p.daysActive])];
     const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download = "nuqta-portal-activity.csv"; a.click();
   });

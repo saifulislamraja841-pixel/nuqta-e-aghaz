@@ -249,6 +249,7 @@
           firstSeen: seen ? new Date(last - rnd() * 3 * 864e5).toISOString() : "", lastSeen: seen ? new Date(last).toISOString() : "",
           logins: seen ? 1 + Math.floor(rnd() * 3) : 0, visits: seen ? Math.floor(rnd() * 6) : 0, daysActive: seen ? 1 + Math.floor(rnd() * 4) : 0 });
       }
+      people.forEach((p) => { p.activated = p.logins > 0 || rnd() < (p.type === "Ambassador" ? 0.8 : 0.6); p.activatedAt = ""; });
       people.sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || "") || a.name.localeCompare(b.name));
       const since = (ms) => people.filter((p) => p.lastSeen && Date.now() - new Date(p.lastSeen) <= ms).length;
       const grp = (t) => { const g = people.filter((p) => p.type === t); return { total: g.length, loggedIn: g.filter((p) => p.lastSeen).length }; };
@@ -259,7 +260,7 @@
       });
       return {
         demo: true, generatedAt: new Date().toISOString(),
-        totals: { accounts: people.length, loggedIn: people.filter((p) => p.lastSeen).length, never: people.filter((p) => !p.lastSeen).length,
+        totals: { accounts: people.length, activated: people.filter((p) => p.activated).length, loggedIn: people.filter((p) => p.lastSeen).length, never: people.filter((p) => !p.lastSeen).length,
           active24h: since(864e5), active7d: since(7 * 864e5), logins: people.reduce((s, p) => s + p.logins, 0) },
         groups: { ambassadors: grp("Ambassador"), participants: grp("Participant") }, daily, people,
       };

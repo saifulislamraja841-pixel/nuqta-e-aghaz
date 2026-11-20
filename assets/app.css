@@ -150,5 +150,11 @@ table.t{width:100%;border-collapse:collapse;font-size:13.5px}
 .side a.tab .cnt:empty{display:none}
 .t td.when{white-space:nowrap;color:var(--muted)}
 .pill-never{color:var(--dim)}
+.badge.no{border-color:rgba(255,107,138,.35);color:var(--bad)}
+.act-seg{flex-wrap:wrap;margin:4px 0 10px}
+.act-seg button span{opacity:.7;margin-left:4px;font-variant-numeric:tabular-nums}
+.act-key{font-size:12px;color:var(--dim);margin:0 0 12px}
+.act-key b{color:var(--muted);font-weight:500}
+.act-mail{font-size:11.5px;color:var(--dim)}
 .banner-demo{display:block}
 .panel-head{flex-wrap:wrap}

@@ -126,7 +126,7 @@ function partSheet_() {
 }
 function partRows_() {
   const v = partSheet_().getDataRange().getValues().slice(1);
-  return v.filter(r => r[0]).map(r => ({ email: String(r[0]).trim().toLowerCase(), name: String(r[1] || ""), forms: String(r[2] || ""), pass: String(r[3] || "").trim(), status: String(r[5] || "").toLowerCase() }));
+  return v.filter(r => r[0]).map(r => ({ email: String(r[0]).trim().toLowerCase(), name: String(r[1] || ""), forms: String(r[2] || ""), pass: String(r[3] || "").trim(), status: String(r[5] || "").toLowerCase(), sent: r[4] || "" }));
 }
 /* Adds new participants, then emails anyone not yet emailed. Existing participants are only
    emailed after emailLoginsToExistingParticipants() has been run once. Returns emails sent. */
@@ -315,9 +315,10 @@ function ambRows_() {
   const sh = ambSheet_(), all = sh.getDataRange().getValues();
   if (all.length < 2) return [];
   const H = all[0].map(h => String(h).trim()), f = re => H.findIndex(h => re.test(h));
-  const c = { ref: f(/^reference number$/i), pass: f(/^portal password$/i), status: f(/^status$/i), email: f(/e-?mail/i), name: f(/^(full\s*)?name/i) };
+  const c = { ref: f(/^reference number$/i), pass: f(/^portal password$/i), status: f(/^status$/i), email: f(/e-?mail/i), name: f(/^(full\s*)?name/i), sent: f(/^login sent$/i) };
   const v = (r, k) => c[k] >= 0 ? String(r[c[k]] == null ? "" : r[c[k]]).trim() : "";
-  return all.slice(1).map(r => ({ email: v(r, "email").toLowerCase(), name: v(r, "name"), code: v(r, "ref"), pass: v(r, "pass"), status: v(r, "status").toLowerCase() }))
+  return all.slice(1).map(r => ({ email: v(r, "email").toLowerCase(), name: v(r, "name"), code: v(r, "ref"), pass: v(r, "pass"), status: v(r, "status").toLowerCase(),
+      sent: c.sent >= 0 ? r[c.sent] : "" }))
     .filter(a => a.email && a.code && !/reject|duplicate/.test(a.status));
 }
 function sendLoginEmail_(to, name, ref, pass, duplicate) {
@@ -527,13 +528,16 @@ function activity_() {
   const people = {};
   const add = (email, name, type, extra) => {
     if (!email) return;
-    const p = people[email] || (people[email] = { email, name: "", types: [], code: "", forms: "", firstSeen: null, lastSeen: null, logins: 0, visits: 0, days: {} });
+    const p = people[email] || (people[email] = { email, name: "", types: [], code: "", forms: "", firstSeen: null, lastSeen: null, logins: 0, visits: 0, days: {}, activated: false, activatedAt: null });
     if (!p.name && name) p.name = name;
     if (p.types.indexOf(type) < 0) p.types.push(type);
-    Object.assign(p, extra || {});
+    const x = Object.assign({}, extra || {}), sent = x.sent; delete x.sent;
+    Object.assign(p, x);
+    // "Activated" = a portal password exists and the login details were emailed (Login Sent has a date)
+    if (sent) { p.activated = true; if (sent instanceof Date && (!p.activatedAt || sent < p.activatedAt)) p.activatedAt = sent; }
   };
-  ambRows_().forEach(a => add(a.email, a.name, "Ambassador", { code: a.code }));
-  partRows_().filter(p => !/skip|stop/.test(p.status)).forEach(p => add(p.email, p.name, "Participant", { forms: p.forms }));
+  ambRows_().forEach(a => add(a.email, a.name, "Ambassador", { code: a.code, sent: a.pass && a.sent }));
+  partRows_().filter(p => !/skip|stop/.test(p.status)).forEach(p => add(p.email, p.name, "Participant", { forms: p.forms, sent: p.pass && p.sent }));
   const accounts = Object.keys(people).length;
   const log = logSheet_().getDataRange().getValues().slice(1).filter(r => r[1] && r[0] instanceof Date);
   log.forEach(r => {
@@ -555,13 +559,14 @@ function activity_() {
   }
   const out = {
     generatedAt: new Date().toISOString(),
-    totals: { accounts, loggedIn: list.filter(p => p.lastSeen).length, never: list.filter(p => !p.lastSeen).length,
+    totals: { accounts, activated: list.filter(p => p.activated || p.logins > 0).length, loggedIn: list.filter(p => p.lastSeen).length, never: list.filter(p => !p.lastSeen).length,
       active24h: since(864e5), active7d: since(7 * 864e5), logins: log.filter(r => String(r[2]) === "login").length },
     groups: { ambassadors: group("Ambassador"), participants: group("Participant") },
     daily,
     people: list.map(p => ({ email: p.email, name: p.name, type: p.types.join(" + "), code: p.code, forms: p.forms,
       firstSeen: p.firstSeen ? p.firstSeen.toISOString() : "", lastSeen: p.lastSeen ? p.lastSeen.toISOString() : "",
-      logins: p.logins, visits: p.visits, daysActive: Object.keys(p.days).length }))
+      logins: p.logins, visits: p.visits, daysActive: Object.keys(p.days).length,
+      activated: p.activated || p.logins > 0, activatedAt: p.activatedAt ? p.activatedAt.toISOString() : "" }))
       .sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || "") || a.name.localeCompare(b.name)),
   };
   try { cache.put("activity", JSON.stringify(out), 120); } catch (e) { /* too big to cache */ }
