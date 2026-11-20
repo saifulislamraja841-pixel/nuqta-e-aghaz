@@ -96,6 +96,7 @@ const CACHE_SECONDS = 6 * 3600;
 function refreshAll() {
   syncAmbassadors_(SEND_AMBASSADOR_EMAIL);                  // catches any row the submit trigger missed
   try { syncParticipants_(SEND_PARTICIPANT_EMAIL); } catch (e) { Logger.log("Participants: " + e); }
+  try { continueReminders_(); } catch (e) { Logger.log("Reminders: " + e); }
   const cache = CacheService.getScriptCache();
   cache.removeAll(["stats"].concat(Object.keys(TABS).map(k => "rows_" + k)));
   Object.keys(TABS).forEach(k => readTab_(k));
@@ -436,7 +437,7 @@ function stats_() {
    Returns a signed token that the portal uses for 14 days. */
 function login_(user, pass) {
   const r = checkLogin_(user, pass);
-  if (r.ok && r.profile) logActivity_(r.profile.email, "login");
+  if (r.ok && r.profile) { logActivity_(r.profile.email, "login"); const a = findAccount_(r.profile.email); r.username = (a && a.code) || r.profile.email; }
   return r;
 }
 function checkLogin_(user, pass) {
@@ -452,6 +453,87 @@ function checkLogin_(user, pass) {
     return r.ok ? Object.assign(r, { token: token_(em) }) : r;
   }
   return { ok: false, message: amb || part ? "Wrong password. Check the email we sent you after you registered." : "We couldn't find that username. Ambassadors: use your reference number (e.g. NEA07). Others: use your email." };
+}
+/* -------------------- PASSWORDS: reset + change -------------------- */
+/* Forgot password: we email a 6-digit code (valid 15 minutes) to the account's email; with the code
+   they choose a new password. Signed-in people can also change their password in the portal.
+   The new password is written to the same "Portal Password" column the login uses. */
+function findAccount_(user) {
+  user = String(user || "").trim();
+  const key = refKey_(user), em = user.toLowerCase();
+  const amb = ambRows_().find(a => (key && /^[A-Z]*-?\d+$/i.test(user.replace(/\s/g, "")) && refKey_(a.code) === key) || a.email === em);
+  if (amb) return { email: amb.email, name: amb.name, code: amb.code };
+  const part = /@/.test(em) && partRows_().find(p => p.email === em && !/skip|stop/.test(p.status));
+  return part ? { email: part.email, name: part.name, code: "" } : null;
+}
+function checkNewPassword_(pass) {
+  pass = String(pass || "");
+  if (pass.length < 6) return "Use at least 6 characters for your password.";
+  if (pass.length > 64) return "Please keep your password under 64 characters.";
+  if (/^\s|\s$/.test(pass)) return "Your password can't start or end with a space.";
+  return "";
+}
+function setPassword_(email, pass) {
+  email = String(email || "").toLowerCase();
+  let n = 0;
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    // ambassadors: every numbered row with this email
+    const sh = ambSheet_(), all = sh.getDataRange().getValues(), H = all[0].map(h => String(h).trim()), f = re => H.findIndex(h => re.test(h));
+    const c = { email: f(/e-?mail/i), pass: f(/^portal password$/i), ref: f(/^reference number$/i), status: f(/^status$/i) };
+    if (c.email >= 0 && c.pass >= 0) all.slice(1).forEach((r, i) => {
+      if (String(r[c.email]).trim().toLowerCase() !== email || (c.ref >= 0 && !String(r[c.ref]).trim())) return;
+      if (c.status >= 0 && /reject|duplicate/i.test(String(r[c.status]))) return;
+      sh.getRange(i + 2, c.pass + 1).setNumberFormat("@").setValue(pass); n++;
+    });
+    // participants
+    const ps = partSheet_(), rows = ps.getDataRange().getValues();
+    rows.slice(1).forEach((r, i) => { if (String(r[0]).trim().toLowerCase() === email) { ps.getRange(i + 2, 4).setNumberFormat("@").setValue(pass); n++; } });
+  } finally { lock.releaseLock(); }
+  return n;
+}
+const mask_ = em => String(em).replace(/^(.{1,2})[^@]*(@.*)$/, (m, a, b) => a + "•••" + b);
+function resetRequest_(user) {
+  const acct = findAccount_(user);
+  if (!acct) return { ok: false, message: "We couldn't find that username. Ambassadors: use your reference number (e.g. NEA07). Others: use your registered email." };
+  const cache = CacheService.getScriptCache(), rk = "resetn_" + acct.email, n = Number(cache.get(rk) || 0);
+  if (n >= 3) return { ok: false, message: "We've already sent you several codes. Please check your email (and the Spam folder) or try again in an hour." };
+  if (MailApp.getRemainingDailyQuota() < 1) return { ok: false, message: "We can't send emails right now. Please try again tomorrow or message us on WhatsApp." };
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  cache.put("reset_" + acct.email, JSON.stringify({ code, tries: 0 }), 900);
+  cache.put(rk, String(n + 1), 3600);
+  MailApp.sendEmail({ to: acct.email, subject: "Your Nuqta-e-Aghaz password reset code: " + code, name: "Nuqta-e-Aghaz",
+    htmlBody: "Assalam o Alaikum " + String(acct.name || "").replace(/</g, "&lt;") + ",<br><br>Your code to reset your portal password is:<br><br>" +
+      "<b style='font-size:26px;letter-spacing:4px'>" + code + "</b><br><br>It works for 15 minutes. If you didn't ask for this, ignore this email; your password stays the same." +
+      "<br><br>Portal: <a href='" + SITE_URL + "portal.html'>" + SITE_URL + "portal.html</a><br><br>— Team Nuqta-e-Aghaz" });
+  return { ok: true, sentTo: mask_(acct.email) };
+}
+function resetConfirm_(user, code, pass) {
+  const acct = findAccount_(user);
+  if (!acct) return { ok: false, message: "We couldn't find that username." };
+  const cache = CacheService.getScriptCache(), k = "reset_" + acct.email, saved = JSON.parse(cache.get(k) || "null");
+  if (!saved) return { ok: false, message: "This code has expired. Ask for a new code." };
+  if (String(code || "").replace(/\D/g, "") !== saved.code) {
+    saved.tries++;
+    if (saved.tries >= 5) { cache.remove(k); return { ok: false, message: "Too many wrong codes. Ask for a new code." }; }
+    cache.put(k, JSON.stringify(saved), 900);
+    return { ok: false, message: "That code is not correct. Check the latest email from us." };
+  }
+  const bad = checkNewPassword_(pass);
+  if (bad) return { ok: false, message: bad };
+  if (!setPassword_(acct.email, String(pass))) return { ok: false, message: "We couldn't update your password. Please message us on WhatsApp." };
+  cache.remove(k); cache.remove("resetn_" + acct.email);
+  logActivity_(acct.email, "login");
+  return Object.assign(portalWithToken_(acct.email), { username: acct.code || acct.email });
+}
+function changePassword_(token, pass) {
+  const email = fromToken_(token);
+  if (!email) return { ok: false, expired: true, message: "Please sign in again." };
+  const bad = checkNewPassword_(pass);
+  if (bad) return { ok: false, message: bad };
+  const acct = findAccount_(email) || {};
+  if (!setPassword_(email, String(pass))) return { ok: false, message: "We couldn't update your password. Please message us on WhatsApp." };
+  return { ok: true, username: acct.code || email };
 }
 function portalWithToken_(email) { const r = portalData_(email); return r.ok ? Object.assign(r, { token: token_(email) }) : r; }
 function secret_() {
@@ -549,6 +631,7 @@ function activity_() {
     if (String(r[2]) === "login") p.logins++; else p.visits++;
     p.days[dayKey_(t)] = 1;
   });
+  const rem = reminded_();
   const now = Date.now(), list = Object.keys(people).map(k => people[k]);
   const since = ms => list.filter(p => p.lastSeen && now - p.lastSeen.getTime() <= ms).length;
   const group = type => { const g = list.filter(p => p.types.indexOf(type) >= 0); return { total: g.length, loggedIn: g.filter(p => p.lastSeen).length }; };
@@ -562,50 +645,182 @@ function activity_() {
     totals: { accounts, activated: list.filter(p => p.activated || p.logins > 0).length, loggedIn: list.filter(p => p.lastSeen).length, never: list.filter(p => !p.lastSeen).length,
       active24h: since(864e5), active7d: since(7 * 864e5), logins: log.filter(r => String(r[2]) === "login").length },
     groups: { ambassadors: group("Ambassador"), participants: group("Participant") },
+    reminderRound: PropertiesService.getScriptProperties().getProperty("REMIND_ROUND") ? { group: PropertiesService.getScriptProperties().getProperty("REMIND_GROUP") || "all" } : null,
     daily,
     people: list.map(p => ({ email: p.email, name: p.name, type: p.types.join(" + "), code: p.code, forms: p.forms,
       firstSeen: p.firstSeen ? p.firstSeen.toISOString() : "", lastSeen: p.lastSeen ? p.lastSeen.toISOString() : "",
       logins: p.logins, visits: p.visits, daysActive: Object.keys(p.days).length,
-      activated: p.activated || p.logins > 0, activatedAt: p.activatedAt ? p.activatedAt.toISOString() : "" }))
+      activated: p.activated || p.logins > 0, activatedAt: p.activatedAt ? p.activatedAt.toISOString() : "",
+      reminded: rem[p.email] && rem[p.email].last ? new Date(rem[p.email].last).toISOString() : "", reminders: rem[p.email] ? rem[p.email].n : 0 }))
       .sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || "") || a.name.localeCompare(b.name)),
   };
   try { cache.put("activity", JSON.stringify(out), 120); } catch (e) { /* too big to cache */ }
   return out;
 }
 
+/* -------------------- LOGIN REMINDERS (people who never signed in) -------------------- */
+/* "Send reminder" in Dashboard → Portal activity emails everyone who has never signed in their
+   username, password and the portal link. Gmail allows about 100 emails a day, so whoever is left
+   gets theirs automatically over the next days (refreshAll continues the round every 5 minutes).
+   Nobody gets more than one reminder per round, and never two within 3 days.
+   The "Login Reminders" tab records who was reminded and when. */
+const REM_TAB = "Login Reminders";
+function remSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(REM_TAB);
+  if (!sh) { sh = ss.insertSheet(REM_TAB); sh.appendRow(["Email", "Name", "Last Reminder", "Reminders"]); sh.setFrozenRows(1); sh.getRange(1, 1, 1, 4).setFontWeight("bold"); }
+  return sh;
+}
+function reminded_() {
+  const m = {};
+  remSheet_().getDataRange().getValues().slice(1).forEach((r, i) => { if (r[0]) m[String(r[0]).trim().toLowerCase()] = { row: i + 2, last: r[2] instanceof Date ? r[2].getTime() : 0, n: Number(r[3]) || 0 }; });
+  return m;
+}
+/* Everyone with a password who has never signed in: [{ email, name, user, pass, group }] */
+function neverLoggedIn_(group) {
+  const seen = {};
+  logSheet_().getDataRange().getValues().slice(1).forEach(r => { if (r[1]) seen[String(r[1]).trim().toLowerCase()] = 1; });
+  const out = {}, want = g => !group || group === "all" || group === g;
+  if (want("Ambassador")) ambRows_().forEach(a => { if (a.pass && !seen[a.email] && !out[a.email]) out[a.email] = { email: a.email, name: a.name, user: a.code, pass: a.pass }; });
+  if (want("Participant")) partRows_().forEach(p => { if (p.pass && !seen[p.email] && !out[p.email] && !/skip|stop/.test(p.status)) out[p.email] = { email: p.email, name: p.name, user: p.email, pass: p.pass }; });
+  return Object.keys(out).map(k => out[k]);
+}
+function sendReminderEmail_(p) {
+  try {
+    const portal = SITE_URL + "portal.html", app = SITE_URL + "install.html";
+    MailApp.sendEmail({
+      to: p.email, name: "Nuqta-e-Aghaz",
+      subject: "Reminder: your Nuqta-e-Aghaz portal is waiting for you",
+      htmlBody: "Assalam o Alaikum " + String(p.name || "").replace(/</g, "&lt;") + ",<br><br>You haven't signed in to your Nuqta-e-Aghaz portal yet. " +
+        "It has your registrations, event updates, announcements" + (/^[A-Z]/i.test(p.user) && !/@/.test(p.user) ? ", your ambassador link and referral count" : "") +
+        ", and you can message the team there (text, photo or voice note).<br><br>" +
+        "<table style='border-collapse:collapse;font-size:15px'>" +
+        "<tr><td style='padding:4px 14px 4px 0'>Username</td><td><b>" + p.user + "</b></td></tr>" +
+        "<tr><td style='padding:4px 14px 4px 0'>Password</td><td><b style='font-family:monospace;font-size:16px'>" + String(p.pass).replace(/</g, "&lt;") + "</b></td></tr>" +
+        "<tr><td style='padding:4px 14px 4px 0'>Sign in here</td><td><a href='" + portal + "'>" + portal + "</a></td></tr></table><br>" +
+        "Forgot your password? Tap <b>Forgot your password?</b> on the sign-in page to set a new one.<br>" +
+        "Get the app on your phone: <a href='" + app + "'>" + app + "</a><br><br>— Team Nuqta-e-Aghaz",
+    });
+    return true;
+  } catch (e) { Logger.log("Reminder failed for " + p.email + ": " + e); return false; }
+}
+/* Sends reminders for the current round, as far as today's Gmail quota allows. */
+function runReminders_(group) {
+  const pr = PropertiesService.getScriptProperties(), round = Number(pr.getProperty("REMIND_ROUND") || 0);
+  group = group || pr.getProperty("REMIND_GROUP") || "all";
+  if (!round) return { sent: 0, left: 0 };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return { sent: 0, left: -1 };
+  try {
+    const sh = remSheet_(), done = reminded_(), now = Date.now();
+    const todo = neverLoggedIn_(group).filter(p => { const d = done[p.email]; return !d || (d.last < round && now - d.last > 3 * 864e5); });
+    let sent = 0;
+    for (const p of todo) {
+      if (MailApp.getRemainingDailyQuota() <= MAIL_RESERVE) break;
+      if (!sendReminderEmail_(p)) continue;
+      const d = done[p.email];
+      if (d) sh.getRange(d.row, 2, 1, 3).setValues([[p.name || "", new Date(), d.n + 1]]);
+      else { sh.appendRow([p.email, p.name || "", new Date(), 1]); done[p.email] = { row: sh.getLastRow(), last: now, n: 1 }; }
+      sent++;
+    }
+    const left = todo.length - sent;
+    if (!left) { pr.deleteProperty("REMIND_ROUND"); pr.deleteProperty("REMIND_GROUP"); }
+    CacheService.getScriptCache().remove("activity");
+    return { sent, left };
+  } finally { lock.releaseLock(); }
+}
+function continueReminders_() { if (PropertiesService.getScriptProperties().getProperty("REMIND_ROUND")) runReminders_(); }
+/* From the dashboard: start a new round (or carry on the current one) */
+function startReminders_(group) {
+  const pr = PropertiesService.getScriptProperties();
+  if (!pr.getProperty("REMIND_ROUND")) { pr.setProperty("REMIND_ROUND", String(Date.now())); pr.setProperty("REMIND_GROUP", group || "all"); }
+  const r = runReminders_();
+  return { ok: true, sent: r.sent, left: Math.max(0, r.left), quota: MailApp.getRemainingDailyQuota() };
+}
+/* Can also be run by hand from the editor */
+function sendLoginReminders() { Logger.log(JSON.stringify(startReminders_("all"))); }
+
 /* -------------------- MESSAGES (portal → team) -------------------- */
 /* "Messages" tab: questions people send from their portal. Reply from the dashboard inbox
    (or type in the Reply column); the reply shows in their portal. Status: Open / Answered / Closed. */
 const MSG_TAB = "Messages";
-const MSG_HEAD = ["ID", "Timestamp", "Email", "Name", "Topic", "Message", "Status", "Reply", "Replied At"];
+const MSG_HEAD = ["ID", "Timestamp", "Email", "Name", "Topic", "Message", "Status", "Reply", "Replied At", "Attachment", "Reply Attachment"];
 function msgSheet_() {
   const ss = SpreadsheetApp.getActive();
   let sh = ss.getSheetByName(MSG_TAB);
   if (!sh) { sh = ss.insertSheet(MSG_TAB); sh.appendRow(MSG_HEAD); sh.setFrozenRows(1); sh.getRange(1, 1, 1, MSG_HEAD.length).setFontWeight("bold"); }
+  else if (sh.getLastColumn() < MSG_HEAD.length) sh.getRange(1, 1, 1, MSG_HEAD.length).setValues([MSG_HEAD]).setFontWeight("bold");
   return sh;
+}
+
+/* -------------------- ATTACHMENTS (photos + voice notes in messages) -------------------- */
+/* Files are saved privately in the Drive folder "Nuqta Portal Attachments" of the account that runs
+   this script. They are never shared publicly: the portal and dashboard fetch them through this
+   script, and only the person in that conversation (or the team, with the admin key) can open them. */
+const ATTACH_FOLDER = "Nuqta Portal Attachments";
+const ATTACH_MAX_BYTES = 6 * 1024 * 1024;
+function attachFolder_() {
+  const pr = PropertiesService.getScriptProperties(), id = pr.getProperty("ATTACH_FOLDER_ID");
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* deleted: make a new one */ } }
+  const f = DriveApp.createFolder(ATTACH_FOLDER);
+  pr.setProperty("ATTACH_FOLDER_ID", f.getId());
+  return f;
+}
+/* Run this once from the editor: it asks Google for permission to save files in Drive. */
+function authorizeAttachments() { Logger.log("Attachments folder: " + attachFolder_().getUrl()); }
+/* a = { kind: "image" | "voice", mime, name, data (base64), duration }. Returns the stored description or throws. */
+function saveAttachment_(a, who) {
+  if (!a || !a.data) return null;
+  const kind = a.kind === "voice" ? "voice" : "image", mime = String(a.mime || "").split(";")[0].toLowerCase();
+  if (kind === "image" && !/^image\/(jpeg|png|webp|gif)$/.test(mime)) throw new Error("Only photos (JPG, PNG, WEBP) can be sent.");
+  if (kind === "voice" && !/^audio\/(webm|mp4|mpeg|ogg|aac|x-m4a|wav)$/.test(mime)) throw new Error("This voice note format isn't supported.");
+  const bytes = Utilities.base64Decode(String(a.data).replace(/^data:[^,]*,/, ""));
+  if (bytes.length > ATTACH_MAX_BYTES) throw new Error("The file is too large (6 MB at most).");
+  const ext = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "audio/webm": "webm", "audio/mp4": "m4a", "audio/x-m4a": "m4a",
+    "audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/aac": "aac", "audio/wav": "wav" }[mime] || "bin";
+  const name = (kind === "voice" ? "voice" : "photo") + "_" + String(who || "").replace(/[^a-z0-9]+/gi, "-").slice(0, 40) + "_" +
+    Utilities.formatDate(new Date(), "Asia/Karachi", "yyyyMMdd-HHmmss") + "." + ext;
+  const file = attachFolder_().createFile(Utilities.newBlob(bytes, mime, name));
+  return { id: file.getId(), kind, mime, size: bytes.length, duration: Math.max(0, Math.round(Number(a.duration) || 0)) };
+}
+function parseAtt_(v) { try { const o = v ? JSON.parse(String(v)) : null; return o && o.id ? o : null; } catch (e) { return null; } }
+/* Sends one attachment back as base64, only to someone allowed to see it */
+function getAttachment_(id, token, key) {
+  id = String(id || "");
+  const admin = key && keyOk_(key), email = admin ? "" : fromToken_(token);
+  if (!admin && !email) return { ok: false, expired: !!token, message: "Please sign in again." };
+  const m = readMessages_().find(x => (x.attachment && x.attachment.id === id) || (x.replyAttachment && x.replyAttachment.id === id));
+  if (!m || (!admin && m.email !== email)) return { ok: false, message: "File not found." };
+  const blob = DriveApp.getFileById(id).getBlob();
+  return { ok: true, mime: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) };
 }
 function readMessages_() {
   const iso = v => v instanceof Date ? v.toISOString() : String(v || "");
   return msgSheet_().getDataRange().getValues().slice(1).filter(r => r[0]).map(r => ({
     id: String(r[0]), ts: iso(r[1]), email: String(r[2]).trim().toLowerCase(), name: String(r[3] || ""), topic: String(r[4] || ""),
     message: String(r[5] || ""), status: String(r[6] || "Open"), reply: String(r[7] || ""), repliedAt: iso(r[8]),
+    attachment: parseAtt_(r[9]), replyAttachment: parseAtt_(r[10]),
   })).sort((a, b) => new Date(b.ts) - new Date(a.ts));
 }
-function sendMessage_(token, topic, message) {
+function sendMessage_(token, topic, message, attachment) {
   const email = fromToken_(token);
   if (!email) return { ok: false, expired: true, message: "Please sign in again." };
   message = String(message || "").trim(); topic = String(topic || "General question").trim().slice(0, 60);
-  if (message.length < 3) return { ok: false, message: "Please write your message." };
+  const hasFile = !!(attachment && attachment.data);
+  if (!hasFile && message.length < 3) return { ok: false, message: "Please write your message, or add a photo or voice note." };
   if (message.length > 2000) return { ok: false, message: "Please keep your message under 2,000 characters." };
   const cache = CacheService.getScriptCache(), rk = "msgs_" + email, n = Number(cache.get(rk) || 0);
   if (n >= 5) return { ok: false, message: "You've sent several messages in the last hour. Please wait for our reply." };
   cache.put(rk, String(n + 1), 3600);
   const acct = ambRows_().find(a => a.email === email) || partRows_().find(p => p.email === email) || {};
+  let att = null;
+  try { att = hasFile ? saveAttachment_(attachment, acct.code || email) : null; } catch (e) { cache.put(rk, String(n), 3600); return { ok: false, message: e.message }; }
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
-  try { msgSheet_().appendRow(["M" + Date.now(), new Date(), email, acct.name || "", topic, message, "Open", "", ""]); }
+  try { msgSheet_().appendRow(["M" + Date.now(), new Date(), email, acct.name || "", topic, message, "Open", "", "", att ? JSON.stringify(att) : "", ""]); }
   finally { lock.releaseLock(); }
+  const extra = att ? (att.kind === "voice" ? "🎤 Voice note" + (att.duration ? " (" + att.duration + "s)" : "") : "📷 Photo") + " attached" : "";
   whatsAppAlert_("📩 New portal message — Nuqta-e-Aghaz\n" + (acct.name || email) + (acct.code ? " (" + acct.code + ")" : "") +
-    "\nTopic: " + topic + "\n\n" + message.slice(0, 600) + (message.length > 600 ? "…" : "") + "\n\nReply: " + SITE_URL + "dashboard.html");
+    "\nTopic: " + topic + "\n\n" + message.slice(0, 600) + (message.length > 600 ? "…" : "") + (extra ? (message ? "\n" : "") + extra : "") + "\n\nReply: " + SITE_URL + "dashboard.html");
   return { ok: true, messages: readMessages_().filter(m => m.email === email) };
 }
 /* Sends a WhatsApp message to the official number. Never stops the portal if it fails. */
@@ -628,13 +843,17 @@ function msgRow_(id) {
   for (let i = 1; i < ids.length; i++) if (String(ids[i][0]) === String(id)) return i + 1;
   return 0;
 }
-function replyMessage_(id, reply) {
+function replyMessage_(id, reply, attachment) {
   reply = String(reply || "").trim();
-  if (!reply) return { error: "Write a reply first" };
+  const hasFile = !!(attachment && attachment.data);
+  if (!reply && !hasFile) return { error: "Write a reply, or add a photo or voice note" };
   const row = msgRow_(id);
   if (!row) return { error: "Message not found" };
   const sh = msgSheet_(), r = sh.getRange(row, 1, 1, MSG_HEAD.length).getValues()[0];
+  let att = null;
+  try { att = hasFile ? saveAttachment_(attachment, "team") : null; } catch (e) { return { error: e.message }; }
   sh.getRange(row, 7, 1, 3).setValues([["Answered", reply.slice(0, 5000), new Date()]]);
+  sh.getRange(row, 11).setValue(att ? JSON.stringify(att) : "");
   if (EMAIL_REPLIES && r[2] && MailApp.getRemainingDailyQuota() > MAIL_RESERVE) {
     try {
       MailApp.sendEmail({ to: String(r[2]), subject: "Reply from Team Nuqta-e-Aghaz: " + r[4],
@@ -686,6 +905,7 @@ function doGet(e) {
       return json_(portal_(p.email, p.phone4));
     }
     if (p.action === "announcements") return json_({ announcements: readAnn_().filter(a => a.audience === "all") });
+    if (p.action === "file") return json_(getAttachment_(p.id, p.token, p.key));
     return json_({ ok: true, service: "Nuqta-e-Aghaz API" });
   } catch (err) { return json_({ error: String(err) }); }
 }
@@ -694,10 +914,14 @@ function doPost(e) {
   try {
     const p = JSON.parse(e.postData.contents || "{}");
     if (p.action === "login") return json_(login_(p.user, p.pass));
-    if (p.action === "sendMessage") return json_(sendMessage_(p.token, p.topic, p.message));
+    if (p.action === "sendMessage") return json_(sendMessage_(p.token, p.topic, p.message, p.attachment));
+    if (p.action === "resetRequest") return json_(resetRequest_(p.user));
+    if (p.action === "resetConfirm") return json_(resetConfirm_(p.user, p.code, p.pass));
+    if (p.action === "changePassword") return json_(changePassword_(p.token, p.pass));
     if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" });
+    if (p.action === "sendReminders") return json_(startReminders_(["all", "Ambassador", "Participant"].indexOf(p.group) >= 0 ? p.group : "all"));
     if (p.action === "replyMessage" || p.action === "messageStatus") {
-      const r = p.action === "replyMessage" ? replyMessage_(p.id, p.reply) : setMessageStatus_(p.id, p.status);
+      const r = p.action === "replyMessage" ? replyMessage_(p.id, p.reply, p.attachment) : setMessageStatus_(p.id, p.status);
       return json_(r.error ? r : { ok: true, messages: readMessages_() });
     }
     const sh = annSheet_();

@@ -10,21 +10,37 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261120p"><link rel="stylesheet" href="assets/app.css?v=20261120p"><link rel="stylesheet" href="assets/mobile.css?v=20261120p">
+<link rel="stylesheet" href="assets/style.css?v=20261120r"><link rel="stylesheet" href="assets/app.css?v=20261120r"><link rel="stylesheet" href="assets/mobile.css?v=20261120r">
 </head>
 <body class="app">
 <div class="aurora"></div><canvas id="dots"></canvas><div class="grain"></div>
 
 <section class="login" id="login">
-  <form class="login-box" id="loginForm">
+  <form class="login-box" id="loginForm" method="post" action="portal.html">
     <a href="index.html"><img src="assets/logo-full.png" alt="Nuqta-e-Aghaz"></a>
     <h2>My Portal</h2>
     <p class="s"><b>Ambassadors:</b> sign in with the reference number and password we emailed you.<br><b>Participants:</b> use your registered email and the password we emailed you.</p>
-    <div class="field"><label for="em">Username (reference number or email)</label><input class="input" id="em" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="e.g. NEA07" required></div>
-    <div class="field"><label for="ph">Password (or last 4 phone digits)</label><input class="input" id="ph" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label for="em">Username (reference number or email)</label><input class="input" id="em" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="e.g. NEA07" required></div>
+    <div class="field"><label for="ph">Password (or last 4 phone digits)</label><input class="input" id="ph" name="password" type="password" autocomplete="current-password" required></div>
     <button class="btn btn-primary btn-block" type="submit">Sign in</button>
     <div class="err" id="loginErr"></div>
+    <p class="hint" style="margin-top:4px"><button type="button" class="link-btn" id="forgot">Forgot your password?</button></p>
     <p class="hint" id="loginHint">Not registered yet? <a href="index.html" style="color:var(--lilac)">Register on the main site</a>.</p>
+  </form>
+  <form class="login-box" id="resetForm" hidden>
+    <a href="index.html"><img src="assets/logo-full.png" alt="Nuqta-e-Aghaz"></a>
+    <h2>Reset password</h2>
+    <p class="s" id="rsInfo">Enter your username. We'll email a 6-digit code to the email you registered with.</p>
+    <div class="field"><label for="rUser">Username (reference number or email)</label><input class="input" id="rUser" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="e.g. NEA07" required></div>
+    <div id="rs2" hidden>
+      <div class="field"><label for="rCode">6-digit code from the email</label><input class="input" id="rCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456"></div>
+      <div class="field"><label for="rPass">New password (at least 6 characters)</label><input class="input" id="rPass" name="new-password" type="password" autocomplete="new-password" minlength="6"></div>
+      <div class="field"><label for="rPass2">Type the new password again</label><input class="input" id="rPass2" type="password" autocomplete="new-password" minlength="6"></div>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit" id="rsBtn">Email me a code</button>
+    <div class="err" id="rsErr"></div>
+    <p class="hint" style="margin-top:4px"><button type="button" class="link-btn" id="rsAgain" hidden>Send a new code</button>
+      <button type="button" class="link-btn" id="rsBack" style="margin-left:14px">Back to sign in</button></p>
   </form>
 </section>
 
@@ -32,6 +48,7 @@
   <div class="portal-top">
     <a href="index.html"><img src="assets/logo.png" alt="Nuqta-e-Aghaz"></a><span class="sp"></span>
     <button class="btn btn-ghost btn-sm" id="refresh"><span data-icon="refresh"></span>Refresh</button>
+    <button class="btn btn-ghost btn-sm" id="pwOpen"><span data-icon="key"></span>Password</button>
     <button class="btn btn-ghost btn-sm" id="logout"><span data-icon="logout"></span>Sign out</button>
   </div>
   <div class="banner-demo" id="demoBanner" hidden>⚠ This is a <b>sample portal</b>. It shows live data once the Apps Script URL is added to <code>config.js</code>.</div>
@@ -41,20 +58,32 @@
     <div class="panel evcard"><h3>Nuqta-e-Aghaz 2026</h3><div class="sub" id="evMeta"></div><div class="countdown" id="cd"></div></div>
   </div>
 
+  <form class="panel" id="pwForm" hidden>
+    <div class="pw-panel">
+      <div><h3>Change your password</h3><div class="sub" style="margin-bottom:0">Choose a password you'll remember. Your browser will offer to save it.</div></div>
+      <input type="text" id="pwUser" name="username" autocomplete="username" hidden>
+      <div class="field"><label for="pwNew">New password (at least 6 characters)</label><input class="input" id="pwNew" name="new-password" type="password" autocomplete="new-password" minlength="6" required></div>
+      <div class="field"><label for="pwNew2">Type it again</label><input class="input" id="pwNew2" type="password" autocomplete="new-password" minlength="6" required></div>
+      <div class="inline"><button class="btn btn-primary" type="submit">Save password</button><button class="btn btn-ghost" type="button" id="pwCancel">Cancel</button></div>
+      <div class="err" id="pwErr"></div>
+    </div>
+  </form>
+
   <div class="row r-1-1" id="mid"></div>
 
   <div class="row r-1-2" id="contact">
     <form class="panel" id="msgForm">
-      <h3>Ask the team</h3><div class="sub">Send a question or message. The team's reply will appear here in your portal.</div>
+      <h3>Ask the team</h3><div class="sub">Send a question, a photo or a voice note. The team's reply will appear here in your portal.</div>
       <div class="field"><label for="mTopic">Topic</label><select class="select" id="mTopic">
         <option>General question</option><option>Registration / payment</option><option>Competitions</option><option>Talent Award</option>
         <option>Ambassador program</option><option>Event day</option><option>Other</option></select></div>
-      <div class="field"><label for="mText">Your message</label><textarea class="textarea" id="mText" maxlength="2000" required placeholder="Write your question…"></textarea>
+      <div class="field"><label for="mText">Your message</label><textarea class="textarea" id="mText" maxlength="2000" placeholder="Write your question… (or send a photo / voice note)"></textarea>
         <span class="count" id="mCount">0 / 2000</span></div>
+      <div class="field" id="mAtt"></div>
       <button class="btn btn-primary btn-block" type="submit"><span data-icon="send"></span>Send message</button>
     </form>
     <div class="panel">
-      <div class="panel-head"><div><h3>Your messages</h3><div class="sub">Questions you've sent and the team's replies</div></div><span class="badge" id="msgCount"></span></div>
+      <div class="panel-head"><div><h3>Your messages</h3><div class="sub">Your messages, photos, voice notes and the team's replies</div></div><span class="badge" id="msgCount"></span></div>
       <div id="msgs"></div>
     </div>
   </div>
@@ -65,8 +94,8 @@
   </div>
 </div>
 
-<script src="config.js?v=20261120p"></script>
-<script src="assets/core.js?v=20261120p"></script>
+<script src="config.js?v=20261120r"></script>
+<script src="assets/core.js?v=20261120r"></script>
 <script>
 (function(){
   const N = Nuqta, C = N.C; let CRED = N.store.get("nuqta_portal") || N.session.get("nuqta_portal");   // stays signed in (token lasts 14 days)
@@ -79,20 +108,86 @@
     if (!d.ok) throw new Error(d.message || "We couldn't find a registration with these details.");
     render(d);
   }
+  /* Ask the browser / phone to save the password (Chrome, Edge, Android). Safari and iPhone offer to
+     save it on their own when the sign-in form is submitted and disappears. */
+  function savePassword(id, password, name){
+    try { if (window.PasswordCredential && id && password) navigator.credentials.store(new PasswordCredential({ id, password, name: name || id })).catch(()=>{}); } catch(e){}
+  }
   async function signIn(user, pass){
     const d = await N.post({ action: "login", user, pass });
     if (!d.ok) throw new Error(d.message || "We couldn't sign you in with these details.");
-    CRED = { token: d.token }; N.store.set("nuqta_portal", CRED);
+    CRED = { token: d.token, user: d.username || user }; N.store.set("nuqta_portal", CRED);
+    savePassword(user, pass, d.profile && d.profile.name);
     render(d);
   }
   N.$("#loginForm").addEventListener("submit", async e=>{
     e.preventDefault(); N.$("#loginErr").textContent = "";
-    const b = N.$("#loginForm button"); b.disabled = true; b.textContent = "Checking…";
-    try { await signIn(N.$("#em").value.trim(), N.$("#ph").value.trim()); show(); }
+    const b = N.$("#loginForm button[type=submit]"); b.disabled = true; b.textContent = "Checking…";
+    try { await signIn(N.$("#em").value.trim(), N.$("#ph").value.trim()); show(true); }
     catch(err){ N.$("#loginErr").textContent = err.message; }
     b.disabled = false; b.textContent = "Sign in";
   });
-  const show = ()=>{ N.$("#login").hidden = true; N.$("#app").hidden = false; };
+  const show = (fresh)=>{
+    N.$("#login").hidden = true; N.$("#app").hidden = false;
+    if (fresh) try { history.replaceState(null, "", "portal.html#signed-in"); } catch(e){}   // tells the browser the sign-in worked
+  };
+
+  /* forgot password: email a code, then choose a new password */
+  let rsStep = 1;
+  const rsMode = (on)=>{ N.$("#loginForm").hidden = on; N.$("#resetForm").hidden = !on; N.$("#rsErr").textContent = ""; };
+  function rsStep1(){ rsStep = 1; N.$("#rs2").hidden = true; N.$("#rUser").readOnly = false; N.$("#rsAgain").hidden = true; N.$("#rsBtn").textContent = "Email me a code";
+    N.$("#rsInfo").textContent = "Enter your username. We'll email a 6-digit code to the email you registered with."; }
+  N.$("#forgot").addEventListener("click", ()=>{ N.$("#rUser").value = N.$("#em").value.trim(); rsStep1(); rsMode(true); N.$("#rUser").focus(); });
+  N.$("#rsBack").addEventListener("click", ()=>rsMode(false));
+  N.$("#rsAgain").addEventListener("click", ()=>{ rsStep1(); N.$("#resetForm").requestSubmit(); });
+  N.$("#resetForm").addEventListener("submit", async e=>{
+    e.preventDefault(); N.$("#rsErr").textContent = "";
+    const b = N.$("#rsBtn"), label = b.textContent, user = N.$("#rUser").value.trim();
+    if (!user) { N.$("#rsErr").textContent = "Enter your username."; return; }
+    if (rsStep === 2) {
+      const code = N.$("#rCode").value.replace(/\D/g, ""), p1 = N.$("#rPass").value, p2 = N.$("#rPass2").value;
+      if (code.length !== 6) { N.$("#rsErr").textContent = "Enter the 6-digit code from the email."; return; }
+      if (p1.length < 6) { N.$("#rsErr").textContent = "Use at least 6 characters for your password."; return; }
+      if (p1 !== p2) { N.$("#rsErr").textContent = "The two passwords don't match."; return; }
+    }
+    b.disabled = true; b.textContent = rsStep === 1 ? "Sending…" : "Saving…";
+    try {
+      if (rsStep === 1) {
+        const r = await N.post({ action: "resetRequest", user });
+        if (!r.ok) throw new Error(r.message || "Could not send the code.");
+        rsStep = 2; N.$("#rs2").hidden = false; N.$("#rUser").readOnly = true; N.$("#rsAgain").hidden = false;
+        N.$("#rsInfo").innerHTML = `We've emailed a code to <b>${N.esc(r.sentTo || "your email")}</b>. It works for 15 minutes. Check Spam if you don't see it.`;
+        N.$("#rCode").focus(); b.disabled = false; b.textContent = "Save new password"; return;
+      }
+      const pass = N.$("#rPass").value;
+      const d = await N.post({ action: "resetConfirm", user, code: N.$("#rCode").value.replace(/\D/g, ""), pass });
+      if (!d.ok) throw new Error(d.message || "Could not reset your password.");
+      CRED = { token: d.token, user: d.username || user }; N.store.set("nuqta_portal", CRED);
+      savePassword(d.username || user, pass, d.profile && d.profile.name);
+      render(d); show(true); N.toast("Password changed. You're signed in.");
+    } catch(err){ N.$("#rsErr").textContent = err.message; }
+    b.disabled = false; b.textContent = rsStep === 1 ? "Email me a code" : "Save new password";
+  });
+
+  /* change password (signed in) */
+  N.$("#pwOpen").addEventListener("click", ()=>{ const f = N.$("#pwForm"); f.hidden = !f.hidden; if (!f.hidden) { N.$("#pwErr").textContent = ""; N.$("#pwNew").focus(); f.scrollIntoView({behavior:"smooth", block:"center"}); } });
+  N.$("#pwCancel").addEventListener("click", ()=>{ N.$("#pwForm").reset(); N.$("#pwForm").hidden = true; });
+  N.$("#pwForm").addEventListener("submit", async e=>{
+    e.preventDefault(); N.$("#pwErr").textContent = "";
+    const p1 = N.$("#pwNew").value, p2 = N.$("#pwNew2").value;
+    if (p1.length < 6) { N.$("#pwErr").textContent = "Use at least 6 characters."; return; }
+    if (p1 !== p2) { N.$("#pwErr").textContent = "The two passwords don't match."; return; }
+    const b = N.$("#pwForm button[type=submit]"); b.disabled = true; b.textContent = "Saving…";
+    try {
+      const r = await N.post({ action: "changePassword", token: CRED && CRED.token, pass: p1 });
+      if (r.expired) { (N.store.del("nuqta_portal"), N.session.del("nuqta_portal")); location.reload(); return; }
+      if (!r.ok) throw new Error(r.message || "Could not change your password.");
+      savePassword(r.username || N.$("#pwUser").value, p1);
+      if (CRED) { CRED.user = r.username || CRED.user; N.store.set("nuqta_portal", CRED); }
+      e.target.reset(); e.target.hidden = true; N.toast("Password changed. Use the new one next time you sign in.");
+    } catch(err){ N.$("#pwErr").textContent = err.message; }
+    b.disabled = false; b.textContent = "Save password";
+  });
   if (CRED) load().then(show).catch(err=>{
     if (err instanceof TypeError) { N.$("#loginErr").textContent = "You're offline. Connect to the internet to open your portal."; return; }  // keep them signed in
     N.store.del("nuqta_portal"); N.session.del("nuqta_portal");
@@ -105,6 +200,7 @@
     N.$("#demoBanner").hidden = !d.demo;
     N.$("#hName").textContent = P.name || "Welcome";
     N.$("#hSub").textContent = [P.university, P.email].filter(Boolean).join(" · ");
+    N.$("#pwUser").value = (R.ambassador && R.ambassador.code) || (CRED && CRED.user) || P.email || "";
     const roles = [];
     if (R.main && R.main.registered) roles.push('<span class="badge ok">✓ Main-event pass</span>');
     if (R.ambassador) roles.push(`<span class="badge gold">Ambassador · ${N.esc(R.ambassador.code)}</span>`);
@@ -152,20 +248,25 @@
     N.$("#msgCount").textContent = list.length ? list.length + " message" + (list.length === 1 ? "" : "s") : "";
     N.$("#msgs").innerHTML = list.map(m=>`<div class="msg">
         <div class="h"><b>${N.esc(m.topic)}</b>${statusBadge(m.status)}<span class="t">${N.timeAgo(m.ts)}</span></div>
-        <p class="q">${N.esc(m.message)}</p>
-        ${m.reply ? `<div class="reply"><span>Team Nuqta-e-Aghaz · ${N.timeAgo(m.repliedAt || m.ts)}</span><p>${N.esc(m.reply)}</p></div>` : ""}
+        ${m.message ? `<p class="q">${N.esc(m.message)}</p>` : ""}${N.attHtml(m.attachment)}
+        ${m.reply || m.replyAttachment ? `<div class="reply"><span>Team Nuqta-e-Aghaz · ${N.timeAgo(m.repliedAt || m.ts)}</span>${m.reply ? `<p>${N.esc(m.reply)}</p>` : ""}${N.attHtml(m.replyAttachment)}</div>` : ""}
       </div>`).join("") || '<div class="empty">No messages yet. Ask us anything about the event.</div>';
+    N.loadAttachments(N.$("#msgs"), { token: CRED && CRED.token });
   }
+  const ATT = N.attacher(N.$("#mAtt"));
   N.$("#mText").addEventListener("input", e=>N.$("#mCount").textContent = e.target.value.length + " / 2000");
   N.$("#msgForm").addEventListener("submit", async e=>{
     e.preventDefault();
-    const text = N.$("#mText").value.trim(); if (!text) return;
-    const b = N.$("#msgForm button"), label = b.innerHTML; b.disabled = true; b.textContent = "Sending…";
+    if (ATT.recording()) { N.toast("Stop the recording first, then send."); return; }
+    const text = N.$("#mText").value.trim();
+    if (!text && !ATT.has()) { N.toast("Write a message, or add a photo or voice note."); N.$("#mText").focus(); return; }
+    const b = N.$("#msgForm button[type=submit]"), label = b.innerHTML; b.disabled = true; b.textContent = ATT.has() ? "Uploading…" : "Sending…";
     try {
-      const r = await N.post({ action: "sendMessage", token: CRED && CRED.token, topic: N.$("#mTopic").value, message: text });
+      const attachment = await ATT.get();
+      const r = await N.post({ action: "sendMessage", token: CRED && CRED.token, topic: N.$("#mTopic").value, message: text, attachment });
       if (r.expired) { (N.store.del("nuqta_portal"), N.session.del("nuqta_portal")); location.reload(); return; }
       if (!r.ok) throw new Error(r.message || "Could not send");
-      renderMsgs(r.messages); e.target.reset(); N.$("#mCount").textContent = "0 / 2000"; N.toast("Message sent. We'll reply here soon.");
+      renderMsgs(r.messages); e.target.reset(); ATT.clear(); N.$("#mCount").textContent = "0 / 2000"; N.toast("Message sent. We'll reply here soon.");
     } catch(err){ N.toast(err.message); }
     b.disabled = false; b.innerHTML = label;
   });

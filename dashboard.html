@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261120p"><link rel="stylesheet" href="assets/app.css?v=20261120p"><link rel="stylesheet" href="assets/mobile.css?v=20261120p">
+<link rel="stylesheet" href="assets/style.css?v=20261120r"><link rel="stylesheet" href="assets/app.css?v=20261120r"><link rel="stylesheet" href="assets/mobile.css?v=20261120r">
 </head>
 <body class="app">
 <div class="aurora"></div><div class="grain"></div>
@@ -128,8 +128,8 @@
   </main>
 </div>
 
-<script src="config.js?v=20261120p"></script>
-<script src="assets/core.js?v=20261120p"></script>
+<script src="config.js?v=20261120r"></script>
+<script src="assets/core.js?v=20261120r"></script>
 <script>
 (function(){
   const N = Nuqta; let KEY = N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
@@ -292,24 +292,31 @@
     N.$("#msgList").innerHTML = list.map(m=>`<div class="msg" data-id="${N.esc(m.id)}">
       <div class="h"><b>${N.esc(m.name || m.email)}</b><span class="badge">${N.esc(m.topic)}</span>${mBadge(m.status)}<span class="t">${N.timeAgo(m.ts)}</span></div>
       <div class="who">${N.esc(m.email)}</div>
-      <p class="q">${N.esc(m.message)}</p>
-      ${m.reply ? `<div class="reply"><span>Your reply · ${N.timeAgo(m.repliedAt || m.ts)}</span><p>${N.esc(m.reply)}</p></div>` : ""}
+      ${m.message ? `<p class="q">${N.esc(m.message)}</p>` : ""}${N.attHtml(m.attachment)}
+      ${m.reply || m.replyAttachment ? `<div class="reply"><span>Your reply · ${N.timeAgo(m.repliedAt || m.ts)}</span>${m.reply ? `<p>${N.esc(m.reply)}</p>` : ""}${N.attHtml(m.replyAttachment)}</div>` : ""}
       <div class="replybox">
-        ${m.status === "Closed" ? "" : `<textarea class="textarea" placeholder="${m.reply ? "Send another reply (replaces the one above)…" : "Write your reply…"}"></textarea>`}
+        ${m.status === "Closed" ? "" : `<textarea class="textarea" placeholder="${m.reply || m.replyAttachment ? "Send another reply (replaces the one above)…" : "Write your reply…"}"></textarea><div class="att-slot"></div>`}
         <div class="inline">
           ${m.status === "Closed" ? "" : `<button class="btn btn-primary btn-sm" data-act="reply">${N.icon("send")}Send reply</button>`}
           ${m.status === "Closed" ? `<button class="btn btn-ghost btn-sm" data-act="Open">Reopen</button>` : `<button class="btn btn-ghost btn-sm" data-act="Closed">Close without reply</button>`}
         </div>
       </div></div>`).join("") || `<div class="empty">${msgF === "Open" ? "All caught up. No messages are waiting." : "No messages here."}</div>`;
+    REPLY_ATT.clear();
+    N.$$("#msgList .msg").forEach(box=>{ const slot = N.$(".att-slot", box); if (slot) REPLY_ATT.set(box.dataset.id, N.attacher(slot)); });
+    N.loadAttachments(N.$("#msgList"), { key: KEY });
   }
+  const REPLY_ATT = new Map();
   N.$("#msgList").addEventListener("click", async e=>{
     const b = e.target.closest("[data-act]"); if (!b) return;
     const box = b.closest(".msg"), id = box.dataset.id, act = b.dataset.act;
     const payload = act === "reply" ? { action:"replyMessage", key:KEY, id, reply: N.$("textarea", box).value.trim() } : { action:"messageStatus", key:KEY, id, status: act };
-    if (act === "reply" && !payload.reply) return N.toast("Write a reply first");
-    b.disabled = true;
-    try { const r = await N.post(payload); MSGS = r.messages; renderMsgs(); N.toast(act === "reply" ? "Reply sent" : act === "Closed" ? "Closed" : "Reopened"); }
-    catch(err){ N.toast("Could not save: " + err.message); b.disabled = false; }
+    const att = REPLY_ATT.get(id);
+    if (act === "reply" && att && att.recording()) return N.toast("Stop the recording first, then send.");
+    if (act === "reply" && !payload.reply && !(att && att.has())) return N.toast("Write a reply, or add a photo or voice note");
+    b.disabled = true; const label = b.innerHTML;
+    try { if (act === "reply" && att && att.has()) { b.textContent = "Uploading…"; payload.attachment = await att.get(); }
+      const r = await N.post(payload); MSGS = r.messages; renderMsgs(); N.toast(act === "reply" ? "Reply sent" : act === "Closed" ? "Closed" : "Reopened"); }
+    catch(err){ N.toast("Could not save: " + err.message); b.disabled = false; b.innerHTML = label; }
   });
   N.$$("#msgFilter button").forEach(b=>b.addEventListener("click", ()=>{ msgF = b.dataset.f; N.$$("#msgFilter button").forEach(x=>x.classList.toggle("on", x === b)); renderMsgs(); }));
   N.$("#msgSearch").addEventListener("input", renderMsgs);
@@ -342,6 +349,7 @@
             <input class="input" id="actSearch" placeholder="Search name, referral no., email" style="max-width:240px">
           </div></div>
         <div class="seg act-seg" id="actFilter"></div>
+        <div class="remind" id="actRemind"></div>
         <p class="act-key"><b>Activated</b> = login details sent · <b>Logged in</b> = signed in at least once · <b>Active</b> = used the portal in the last 7 days</p>
         <div class="tbl-wrap"><table class="t" id="actTable"></table></div>
       </div>`;
@@ -389,22 +397,41 @@
     N.$$("#actFilter button").forEach(b=>b.addEventListener("click", ()=>{ actF = b.dataset.f; renderPeople(); }));
   }
   const yes = (ok, a, b) => ok ? `<span class="badge ok">✓ ${a}</span>` : `<span class="badge no">✕ ${b}</span>`;
+  let remArm = false;
+  function drawRemind(){
+    const el = N.$("#actRemind"); if (!el) return;
+    const never = ACT.people.filter(p=>!p.lastSeen && (actG === "all" || p.type.indexOf(actG) >= 0));
+    const who = actG === "Ambassador" ? "ambassadors" : actG === "Participant" ? "participants" : "people";
+    const R = ACT.reminderRound;
+    el.innerHTML = `<div><b>${N.fmt(never.length)} ${who} haven't logged in yet.</b>
+      <span>${R ? "A reminder round is in progress. It continues automatically as Gmail's daily limit allows." : "Email them a reminder with their username, password and the portal link. Anyone reminded in the last 3 days is skipped."}</span></div>
+      <button class="btn ${remArm ? "btn-gold" : "btn-primary"} btn-sm" id="remBtn" ${never.length ? "" : "disabled"}>${N.icon("mail")}${remArm ? `Confirm: email ${N.fmt(never.length)} ${who}` : R ? "Continue sending" : "Email login reminder"}</button>`;
+    N.$("#remBtn").addEventListener("click", async (e)=>{
+      if (!remArm) { remArm = true; drawRemind(); setTimeout(()=>{ if (remArm) { remArm = false; drawRemind(); } }, 8000); return; }
+      remArm = false; const b = e.currentTarget; b.disabled = true; b.textContent = "Sending emails…";
+      try {
+        const r = await N.post({ action: "sendReminders", key: KEY, group: actG });
+        N.toast(`Reminder sent to ${N.fmt(r.sent)}` + (r.left ? ` · ${N.fmt(r.left)} more will be sent automatically when Gmail's daily limit resets` : ""));
+        await loadActivity(true);
+      } catch(err){ N.toast("Could not send: " + err.message); drawRemind(); }
+    });
+  }
   function renderPeople(){
-    drawFilters();
+    drawFilters(); drawRemind();
     const list = filteredPeople(), shown = list.slice(0, 400);
     N.$("#actCount").textContent = N.fmt(list.length) + " people" + (list.length > shown.length ? " · showing the first 400 (use search or Export CSV for all)" : "");
     N.$("#actTable").innerHTML = `<thead><tr><th>Name</th><th>Referral no.</th><th>Type</th><th>Activated</th><th>Logged in</th><th>Active</th><th>Last active</th><th class="num">Sign-ins</th></tr></thead>
       <tbody>${shown.map(p=>`<tr><td style="white-space:nowrap">${N.esc(p.name || "—")}<div class="act-mail">${N.esc(p.email)}</div></td>
         <td>${p.code?`<span class="code">${N.esc(p.code)}</span>`:`<span style="color:var(--dim)" title="${N.esc(p.forms)}">—</span>`}</td><td>${N.esc(p.type)}</td>
         <td>${yes(p.activated,"Activated","Not activated")}</td><td>${yes(p.lastSeen,"Logged in","Not logged in")}</td><td>${yes(isActive(p),"Active","Not active")}</td>
-        <td class="when">${p.lastSeen ? N.timeAgo(p.lastSeen) : '<span class="pill-never">Never</span>'}</td>
+        <td class="when">${p.lastSeen ? N.timeAgo(p.lastSeen) : '<span class="pill-never">Never</span>' + (p.reminded ? `<div class="act-mail">Reminded ${N.timeAgo(p.reminded)}</div>` : "")}</td>
         <td class="num">${p.logins}</td></tr>`).join("") || '<tr><td colspan="8" class="empty">Nobody matches.</td></tr>'}</tbody>`;
   }
   N.$("#actRefresh").addEventListener("click", ()=>loadActivity(true).then(()=>N.toast("Updated")));
   N.$("#actCsv").addEventListener("click", ()=>{
     if (!ACT) return;
-    const rows = [["Name","Referral no.","Email","Type","Registered for","Activated","Logged in","Active (7 days)","Last active","First login","Sign-ins","Visits","Days active"],
-      ...filteredPeople().map(p=>[p.name,p.code,p.email,p.type,p.forms,p.activated?"Yes":"No",p.lastSeen?"Yes":"No",isActive(p)?"Yes":"No",fmtWhen(p.lastSeen) || "Never",fmtWhen(p.firstSeen),p.logins,p.visits,p.daysActive])];
+    const rows = [["Name","Referral no.","Email","Type","Registered for","Activated","Logged in","Active (7 days)","Last active","First login","Sign-ins","Visits","Days active","Last reminder","Reminders"],
+      ...filteredPeople().map(p=>[p.name,p.code,p.email,p.type,p.forms,p.activated?"Yes":"No",p.lastSeen?"Yes":"No",isActive(p)?"Yes":"No",fmtWhen(p.lastSeen) || "Never",fmtWhen(p.firstSeen),p.logins,p.visits,p.daysActive,fmtWhen(p.reminded),p.reminders||0])];
     const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download = "nuqta-portal-activity.csv"; a.click();
   });

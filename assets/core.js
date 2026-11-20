@@ -68,6 +68,10 @@
     compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
     phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
     grid: '<rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',
+    stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
     pinned: '<path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v8"/>',
     link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
@@ -159,6 +163,93 @@
     return j;
   };
 
+  /* ---------- chat attachments: photos + voice notes ---------- */
+  /* N.attacher(el) puts "Photo" and "Voice note" buttons in el. .get() returns the attachment
+     ({kind, mime, data (base64), duration}) or null; .clear() removes it. */
+  const blobToB64 = (b) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = no; r.readAsDataURL(b); });
+  const shrinkImage = (file) => new Promise((ok, no) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const max = 1600, k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); c.toBlob((b) => b ? ok(b) : no(new Error("Could not read this photo")), "image/jpeg", 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); no(new Error("This file is not a photo we can read")); };
+    img.src = url;
+  });
+  const fmtDur = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+  N.attacher = (el, { maxVoice = 120 } = {}) => {
+    let att = null, rec = null, timer = null, started = 0, stream = null;
+    el.classList.add("attacher");
+    el.innerHTML = `<div class="att-btns"><label class="btn btn-ghost btn-sm att-photo">${N.icon("image")}Photo<input type="file" accept="image/*" hidden></label>
+      <button type="button" class="btn btn-ghost btn-sm att-voice">${N.icon("mic")}Voice note</button></div><div class="att-prev"></div>`;
+    const prev = N.$(".att-prev", el), vbtn = N.$(".att-voice", el), file = N.$("input[type=file]", el);
+    const show = () => {
+      if (!att) { prev.innerHTML = ""; el.classList.remove("has"); return; }
+      el.classList.add("has");
+      const src = att.url;
+      prev.innerHTML = `<div class="att-chip">${att.kind === "image" ? `<img src="${src}" alt="Photo to send">` : `<audio controls preload="metadata" src="${src}"></audio><span class="dur">${fmtDur(att.duration)}</span>`}
+        <button type="button" class="icon-btn" title="Remove" aria-label="Remove">${N.icon("x")}</button></div>`;
+      N.$(".icon-btn", prev).addEventListener("click", () => api.clear());
+    };
+    file.addEventListener("change", async () => {
+      const f = file.files[0]; file.value = ""; if (!f) return;
+      try { const b = await shrinkImage(f); api.clear(); att = { kind: "image", mime: "image/jpeg", blob: b, url: URL.createObjectURL(b), duration: 0 }; show(); }
+      catch (e) { N.toast(e.message); }
+    });
+    const stopRec = () => { if (rec && rec.state !== "inactive") rec.stop(); };
+    vbtn.addEventListener("click", async () => {
+      if (rec && rec.state === "recording") return stopRec();
+      if (!navigator.mediaDevices || !window.MediaRecorder) return N.toast("Voice notes don't work in this browser. Try Chrome or Safari.");
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+      catch (e) { return N.toast("Allow microphone access to record a voice note."); }
+      const type = ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+      const chunks = [];
+      rec = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 48000 }, type ? { mimeType: type } : {}));
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      rec.onstop = () => {
+        clearInterval(timer); stream.getTracks().forEach((t) => t.stop()); el.classList.remove("rec");
+        vbtn.innerHTML = N.icon("mic") + "Voice note";
+        const dur = (Date.now() - started) / 1000, mime = (rec.mimeType || type || "audio/webm").split(";")[0];
+        if (dur < 1 || !chunks.length) return N.toast("That recording was too short.");
+        const b = new Blob(chunks, { type: mime });
+        api.clear(); att = { kind: "voice", mime, blob: b, url: URL.createObjectURL(b), duration: Math.round(dur) }; show();
+      };
+      rec.start(500); started = Date.now(); el.classList.add("rec");
+      const tick = () => { const s = (Date.now() - started) / 1000; vbtn.innerHTML = N.icon("stop") + "Stop · " + fmtDur(s); if (s >= maxVoice) stopRec(); };
+      tick(); timer = setInterval(tick, 250);
+    });
+    const api = {
+      async get() { stopRec(); if (!att) return null; return { kind: att.kind, mime: att.mime, duration: att.duration, data: await blobToB64(att.blob) }; },
+      has: () => !!att,
+      recording: () => !!(rec && rec.state === "recording"),
+      clear() { if (att && att.url) URL.revokeObjectURL(att.url); att = null; show(); },
+    };
+    return api;
+  };
+  /* A placeholder for a sent attachment; N.loadAttachments fills it in */
+  N.attHtml = (a) => !a ? "" : `<div class="att-view ${a.kind === "voice" ? "voice" : "image"}" data-att="${N.esc(a.id)}" data-mime="${N.esc(a.mime || "")}">
+    ${a.kind === "voice" ? `${N.icon("mic")}<span>Voice note${a.duration ? " · " + fmtDur(a.duration) : ""}</span><span class="spinner sm"></span>` : `<span class="spinner sm"></span>`}</div>`;
+  const attCache = new Map();
+  N.loadAttachments = (root, auth) => N.$$("[data-att]:not([data-done])", root).forEach(async (el) => {
+    el.dataset.done = "1";
+    const id = el.dataset.att;
+    try {
+      let url = attCache.get(id);
+      if (!url) {
+        const r = await N.api("file", Object.assign({ id }, auth));
+        if (!r.ok) throw new Error(r.message || "Could not load");
+        const bin = atob(r.data), u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        url = URL.createObjectURL(new Blob([u8], { type: r.mime || el.dataset.mime }));
+        attCache.set(id, url);
+      }
+      el.innerHTML = el.classList.contains("voice") ? `<audio controls preload="metadata" src="${url}"></audio>`
+        : `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Photo"></a>`;
+    } catch (e) { el.classList.add("err"); el.innerHTML = (el.classList.contains("voice") ? "Voice note" : "Photo") + " could not be loaded"; }
+  });
+
   /* ---------- DEMO data (used until scriptUrl is set) ---------- */
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -234,6 +325,7 @@
       };
     }
     if (action === "messages") return { demo: true, messages: demoMessages() };
+    if (action === "file") { const f = demoFiles[params.id]; return f ? { ok: true, mime: f.mime, data: f.data } : { ok: false, message: "File not found." }; }
     if (action === "activity") {
       const people = [];
       lb.forEach((a, i) => {
@@ -267,8 +359,19 @@
     }
     return { demo: true };
   };
+  const demoFiles = {};
+  const demoAtt = (a) => { if (!a || !a.data) return null; const id = "f" + Date.now() + Math.floor(rnd() * 1e4); demoFiles[id] = { mime: a.mime, data: a.data }; return { id, kind: a.kind, mime: a.mime, duration: a.duration || 0 }; };
   N.demoPost = async (p) => {
     await new Promise((r) => setTimeout(r, 300));
+    if (p.action === "resetRequest") return String(p.user || "").trim() ? { ok: true, demo: true, sentTo: "st•••@demo.pk" } : { ok: false, message: "Enter your username." };
+    if (p.action === "resetConfirm") {
+      if (String(p.code || "").length !== 6) return { ok: false, message: "That code is not correct. (Demo: any 6 digits work.)" };
+      if (String(p.pass || "").length < 6) return { ok: false, message: "Use at least 6 characters for your password." };
+      const user = String(p.user).trim().toLowerCase(), d = await N.demo("portal", { email: /^nea/.test(user) ? "ambassador@demo.pk" : user });
+      return Object.assign(d, { token: "demo:" + d.profile.email, username: p.user });
+    }
+    if (p.action === "sendReminders") return { ok: true, demo: true, sent: 64, left: 0 };
+    if (p.action === "changePassword") return String(p.pass || "").length < 6 ? { ok: false, message: "Use at least 6 characters for your password." } : { ok: true, demo: true, username: "NEA07" };
     if (p.action === "login") {
       const user = String(p.user || "").trim().toLowerCase();
       if (!user || !p.pass) return { ok: false, message: "Enter your username and password." };
@@ -278,15 +381,15 @@
     if (p.action === "sendMessage") {
       const email = String(p.token || "").replace(/^demo:/, "").toLowerCase();
       const d = await N.demo("portal", { email });
-      if (!String(p.message || "").trim()) return { ok: false, message: "Please write your message." };
+      if (!String(p.message || "").trim() && !(p.attachment && p.attachment.data)) return { ok: false, message: "Please write your message, or add a photo or voice note." };
       const list = [{ id: "d" + Date.now(), ts: new Date().toISOString(), email: /amb/.test(email) || !/student|guest/.test(email) ? "ambassador@demo.pk" : "student@demo.pk",
-        name: d.profile.name, topic: p.topic, message: p.message, status: "Open", reply: "", repliedAt: "" }, ...demoMessages()];
+        name: d.profile.name, topic: p.topic, message: p.message, status: "Open", reply: "", repliedAt: "", attachment: demoAtt(p.attachment) }, ...demoMessages()];
       N.store.set("nuqta_demo_msg", list);
       return { ok: true, demo: true, messages: list.filter((m) => m.email === list[0].email) };
     }
     if (p.action === "replyMessage" || p.action === "messageStatus") {
       const list = demoMessages().map((m) => m.id !== p.id ? m : p.action === "replyMessage"
-        ? { ...m, reply: p.reply, status: "Answered", repliedAt: new Date().toISOString() } : { ...m, status: p.status });
+        ? { ...m, reply: p.reply, status: "Answered", repliedAt: new Date().toISOString(), replyAttachment: demoAtt(p.attachment) } : { ...m, status: p.status });
       N.store.set("nuqta_demo_msg", list);
       return { ok: true, demo: true, messages: list };
     }
