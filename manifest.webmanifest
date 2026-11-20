@@ -1,0 +1,25 @@
+{
+  "id": "/app.html",
+  "name": "Nuqta-e-Aghaz 2026",
+  "short_name": "Nuqta",
+  "description": "Nuqta-e-Aghaz 2026 — 05 December, Faletti's Hotel, Lahore. Register, track your registrations, ambassador referrals and get event updates.",
+  "start_url": "/app.html?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0926",
+  "theme_color": "#0a0926",
+  "lang": "en",
+  "categories": ["events", "education", "social"],
+  "icons": [
+    { "src": "/assets/app/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/app/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/app/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/assets/app/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "My Portal", "url": "/portal.html?source=app", "icons": [{ "src": "/assets/app/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Competitions", "url": "/competitions.html?source=app", "icons": [{ "src": "/assets/app/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Talent Award", "url": "/talent.html?source=app", "icons": [{ "src": "/assets/app/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

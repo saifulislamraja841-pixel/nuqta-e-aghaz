@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Nuqta-e-Aghaz</title>
+<meta name="theme-color" content="#0a0926">
+<link rel="icon" href="assets/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/app/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css?v=20261120p"><link rel="stylesheet" href="assets/app.css?v=20261120p"><link rel="stylesheet" href="assets/mobile.css?v=20261120p">
+</head>
+<body class="app">
+<div class="aurora"></div><div class="grain"></div>
+
+<main class="apphome">
+  <div class="ah-top">
+    <img src="assets/logo.png" alt="Nuqta-e-Aghaz">
+    <div class="inline">
+      <button class="icon-btn" id="shareBtn" aria-label="Share the app"></button>
+      <a class="icon-btn" id="waBtn" target="_blank" rel="noopener" aria-label="WhatsApp the team"></a>
+    </div>
+  </div>
+  <div class="offline-pill">You're offline · showing saved info</div>
+
+  <section class="ah-hero">
+    <img src="assets/logo-full.png" alt="Nuqta-e-Aghaz — سکونِ بحر کو برہم کرے گی اک نئی جنبش">
+    <div class="meta">
+      <span class="chip" data-icon="cal"><span class="js-date"></span> · <span class="js-time"></span></span>
+      <span class="chip" data-icon="pin"><span class="js-venue"></span></span>
+    </div>
+    <div class="countdown" id="countdown"></div>
+    <div class="row2">
+      <a class="btn btn-primary" href="#" data-form="main">Register</a>
+      <a class="btn btn-ghost" id="mapBtn" target="_blank" rel="noopener"><span data-icon="pin"></span>Directions</a>
+    </div>
+  </section>
+
+  <section class="ah-sec">
+    <h2>My portal <a href="portal.html">Open</a></h2>
+    <div id="me"><div class="me"><div class="spinner" style="width:24px;height:24px"></div><div><span>Checking your account…</span></div></div></div>
+  </section>
+
+  <section class="ah-sec">
+    <h2>Quick actions</h2>
+    <div class="qa">
+      <a href="#" data-form="main" class="gold"><i data-icon="users"></i>Register</a>
+      <a href="competitions.html"><i data-icon="trophy"></i>Compete</a>
+      <a href="talent.html"><i data-icon="star"></i>Talent Award</a>
+      <a href="ambassadors.html"><i data-icon="rocket"></i>Ambassadors</a>
+      <a href="stalls.html"><i data-icon="store"></i>Book a stall</a>
+      <a href="sponsors.html"><i data-icon="gift"></i>Sponsor</a>
+      <a id="calBtn" target="_blank" rel="noopener"><i data-icon="cal"></i>Add to calendar</a>
+      <a href="faq.html"><i data-icon="bulb"></i>Help &amp; FAQ</a>
+    </div>
+  </section>
+
+  <section class="ah-sec">
+    <h2>Latest updates <a href="portal.html">All</a></h2>
+    <div class="upd" id="updates"></div>
+  </section>
+
+  <p id="installHint" hidden style="text-align:center;margin-top:26px;font-size:13px;color:var(--muted)">
+    Using this in a browser? <a href="install.html" style="color:var(--lilac)">Install the app</a> for one-tap access.</p>
+</main>
+
+<script src="config.js?v=20261120p"></script>
+<script src="assets/core.js?v=20261120p"></script>
+<script>
+(function(){
+  const N = Nuqta, C = N.C, E = C.event;
+  N.$$(".js-date").forEach(e=>e.textContent = E.dateLabel);
+  N.$$(".js-time").forEach(e=>e.textContent = E.timeLabel);
+  N.$$(".js-venue").forEach(e=>e.textContent = E.venue);
+  N.$("#shareBtn").innerHTML = N.icon("share");
+  N.$("#waBtn").innerHTML = N.icon("whatsapp");
+  N.hydrateIcons();
+  N.countdown(N.$("#countdown"), E.dateISO);
+  N.$("#waBtn").href = "https://wa.me/" + C.contact.whatsapp + "?text=" + encodeURIComponent("Assalam o Alaikum! I have a question about Nuqta-e-Aghaz.");
+  N.$("#mapBtn").href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(E.venue);
+  const start = new Date(E.dateISO), end = new Date(start.getTime() + 7 * 3600e3), g = d => d.toISOString().replace(/[-:]|\.\d{3}/g, "");
+  N.$("#calBtn").href = "https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + encodeURIComponent("Nuqta-e-Aghaz 2026") +
+    "&dates=" + g(start) + "/" + g(end) + "&location=" + encodeURIComponent(E.venue) + "&details=" + encodeURIComponent("Your portal and updates: " + location.origin + "/app.html");
+  if (!N.isStandalone()) N.$("#installHint").hidden = false;
+
+  /* share the app (WhatsApp, etc.) */
+  const shareUrl = location.origin + "/install.html";
+  N.$("#shareBtn").addEventListener("click", async ()=>{
+    const data = { title: "Nuqta-e-Aghaz app", text: "Get the Nuqta-e-Aghaz 2026 app: event updates, your portal and registrations.", url: shareUrl };
+    try { if (navigator.share) await navigator.share(data); else N.copy(shareUrl); } catch(e){}
+  });
+
+  /* offline banner */
+  const net = ()=>document.body.classList.toggle("is-offline", !navigator.onLine);
+  net(); addEventListener("online", net); addEventListener("offline", net);
+
+  /* updates + portal card (last copy is saved so it still shows offline) */
+  const initials = n => String(n || "?").split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  function renderMe(d){
+    const el = N.$("#me");
+    if (!d) { el.innerHTML = `<div class="me"><div class="av">${N.icon("users")}</div><div><b>Sign in to your portal</b><span>See your registrations, ambassador referrals and replies from the team</span></div><a class="btn btn-primary btn-sm" href="portal.html">Sign in</a></div>`; return; }
+    const R = d.roles || {}, bits = [];
+    if (R.ambassador) bits.push("Ambassador " + R.ambassador.code + " · " + R.ambassador.referrals.total + " referrals");
+    else if (R.main && R.main.registered) bits.push("Main-event pass ✓");
+    if ((R.competitions || []).length) bits.push(R.competitions.join(", "));
+    const replies = (d.messages || []).filter(m=>m.reply).length;
+    el.innerHTML = `<a class="me" href="portal.html"><div class="av">${N.esc(initials(d.profile && d.profile.name))}</div><div><b>${N.esc((d.profile && d.profile.name) || "My portal")}</b>
+      <span>${N.esc(bits.join(" · ") || "Open your portal")}</span>${replies ? `<span style="color:var(--ok)">${replies} repl${replies === 1 ? "y" : "ies"} from the team</span>` : ""}</div><span style="color:var(--lilac)">${N.icon("arrow")}</span></a>`;  }
+  function renderUpdates(list){
+    list = [...(list || [])].sort((a,b)=>(b.pinned-a.pinned)||(new Date(b.ts)-new Date(a.ts))).slice(0, 5);
+    N.$("#updates").innerHTML = list.map(a=>`<div class="u"><b>${a.pinned ? "📌 " : ""}${N.esc(a.title)}</b><p>${N.esc(a.message)}</p>
+      <small>${N.timeAgo(a.ts)}${a.link ? ` · <a href="${N.esc(a.link)}" target="_blank" rel="noopener" style="color:var(--lilac)">Open link</a>` : ""}</small></div>`).join("")
+      || '<div class="u"><p>No updates yet. Announcements from the team will appear here.</p></div>';
+  }
+  const saved = N.store.get("nuqta_app_home") || {};
+  if (saved.updates) renderUpdates(saved.updates);
+  const cred = N.store.get("nuqta_portal");
+  if (cred && cred.token) {
+    if (saved.me) renderMe(saved.me);
+    N.api("portal", cred).then(d=>{
+      if (!d.ok) { if (d.expired) N.store.del("nuqta_portal"); renderMe(null); return N.api("announcements").then(a=>{ renderUpdates(a.announcements); N.store.set("nuqta_app_home", { updates: a.announcements }); }); }
+      renderMe(d); renderUpdates(d.announcements); N.store.set("nuqta_app_home", { me: d, updates: d.announcements });
+    }).catch(()=>{ if (!saved.me) renderMe(null); if (!saved.updates) renderUpdates([]); });
+  } else {
+    renderMe(null);
+    N.api("announcements").then(a=>{ renderUpdates(a.announcements); N.store.set("nuqta_app_home", { updates: a.announcements }); })
+      .catch(()=>{ if (!saved.updates) renderUpdates([]); });
+  }
+})();
+</script>
+</body>
+</html>

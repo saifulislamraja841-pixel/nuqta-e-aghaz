@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Get the Nuqta-e-Aghaz app</title>
+<meta name="description" content="Install the Nuqta-e-Aghaz 2026 app on Android or iPhone: event updates, your portal, registrations and ambassador referrals. No app store needed.">
+<meta property="og:title" content="Get the Nuqta-e-Aghaz app">
+<meta property="og:description" content="Event updates, your portal and registrations in one tap. Works on Android and iPhone, no app store needed.">
+<meta property="og:image" content="/assets/app/icon-512.png">
+<meta name="theme-color" content="#0a0926">
+<link rel="icon" href="assets/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/app/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css?v=20261120p"><link rel="stylesheet" href="assets/app.css?v=20261120p"><link rel="stylesheet" href="assets/mobile.css?v=20261120p">
+</head>
+<body class="app">
+<div class="aurora"></div><canvas id="dots"></canvas><div class="grain"></div>
+
+<main class="inst">
+  <img class="appicon" src="assets/app/icon-512.png" alt="Nuqta app icon">
+  <h1>Get the Nuqta app</h1>
+  <p class="lead">For Android and iPhone. No app store and no download: it installs straight from this page in under a minute.</p>
+
+  <div class="feats">
+    <div><span data-icon="bell"></span>Announcements from the team</div>
+    <div><span data-icon="users"></span>Your portal, always signed in</div>
+    <div><span data-icon="mail"></span>Ask questions, get replies</div>
+    <div><span data-icon="trophy"></span>Register for every event</div>
+  </div>
+
+  <div id="installed" class="done-box" hidden>
+    <b style="color:#fff;font-size:16px">✓ You're using the app</b>
+    <p style="margin:6px 0 14px;font-size:14px">Nuqta is installed on this phone.</p>
+    <a class="btn btn-primary" href="app.html">Open the app</a>
+  </div>
+
+  <div id="steps">
+    <div class="tabs-os" role="tablist"><button data-os="android">Android</button><button data-os="ios">iPhone</button></div>
+
+    <!-- ANDROID -->
+    <div class="howto" data-for="android">
+      <button class="btn btn-primary big-install" id="installBtn" hidden><span data-icon="download"></span>Install the app</button>
+      <h3 id="andTitle"><span data-icon="phone"></span>Install on Android</h3>
+      <ol>
+        <li><span>Opened this from <b>WhatsApp</b>? Tap <span class="ui" data-icon="dots"></span> at the top right and choose <b>Open in Chrome</b>.</span></li>
+        <li><span>In Chrome, tap <span class="ui" data-icon="dots"></span> at the top right.</span></li>
+        <li><span>Tap <b>Install app</b> (on some phones it says <b>Add to Home screen</b>), then <b>Install</b>.</span></li>
+        <li><span>Open <b>Nuqta</b> from your apps, like any other app.</span></li>
+      </ol>
+      <a class="btn btn-ghost btn-block" id="apkBtn" hidden style="margin-top:16px"><span data-icon="download"></span>Or download the APK file</a>
+    </div>
+
+    <!-- IPHONE -->
+    <div class="howto" data-for="ios">
+      <h3><span data-icon="phone"></span>Install on iPhone</h3>
+      <ol>
+        <li><span>Opened this from <b>WhatsApp</b>? Tap the <span class="ui" data-icon="compass">Safari</span> icon at the bottom right to open it in <b>Safari</b>.</span></li>
+        <li><span>Tap the <b>Share</b> button <span class="ui" data-icon="share"></span> at the bottom of Safari.</span></li>
+        <li><span>Scroll down and tap <span class="ui" data-icon="addbox">Add to Home Screen</span>.</span></li>
+        <li><span>Tap <b>Add</b>. Open <b>Nuqta</b> from your home screen.</span></li>
+      </ol>
+      <div class="note" id="iosNote">This only works from <b>Safari</b> (or Chrome on iOS 16.4 and newer). Apple doesn't allow installing apps from a downloaded file, which is why it works this way.</div>
+    </div>
+  </div>
+
+  <p id="desk" hidden style="margin-top:22px;color:var(--muted);font-size:14px">On a computer? Send this page to your phone and open it there.</p>
+  <div class="share-row">
+    <a class="btn btn-ghost btn-sm" id="waShare" target="_blank" rel="noopener"><span data-icon="whatsapp"></span>Share on WhatsApp</a>
+    <button class="btn btn-ghost btn-sm" id="copyLink"><span data-icon="copy"></span>Copy link</button>
+    <a class="btn btn-ghost btn-sm" href="app.html">Continue in browser</a>
+  </div>
+</main>
+
+<script src="config.js?v=20261120p"></script>
+<script src="assets/core.js?v=20261120p"></script>
+<script>
+(function(){
+  const N = Nuqta, C = N.C;
+  N.hydrateIcons(); N.dots();
+  const link = location.origin + "/install.html";
+  N.$("#waShare").href = "https://wa.me/?text=" + encodeURIComponent("Get the Nuqta-e-Aghaz 2026 app on your phone (Android & iPhone). Event updates, your portal and registrations: " + link);
+  N.$("#copyLink").addEventListener("click", ()=>N.copy(link));
+
+  if (N.isStandalone()) { N.$("#installed").hidden = false; N.$("#steps").hidden = true; return; }
+
+  let os = N.isIOS() ? "ios" : N.isAndroid() ? "android" : "android";
+  if (!N.isMobile()) N.$("#desk").hidden = false;
+  const pick = o => { os = o; N.$$(".tabs-os button").forEach(b=>b.classList.toggle("on", b.dataset.os === o)); N.$$(".howto").forEach(h=>h.hidden = h.dataset.for !== o); };
+  N.$$(".tabs-os button").forEach(b=>b.addEventListener("click", ()=>pick(b.dataset.os)));
+  pick(os);
+
+  // Chrome on Android: one-tap install button
+  const showBtn = ()=>{ if (!N.installPrompt) return; N.$("#installBtn").hidden = false; N.$("#andTitle").textContent = "Or install it by hand"; };
+  showBtn(); document.addEventListener("nuqta:installable", showBtn);
+  N.$("#installBtn").addEventListener("click", async ()=>{ const ok = await N.promptInstall(); N.$("#installBtn").hidden = true; if (ok) N.toast("Installed! Open Nuqta from your apps."); });
+  document.addEventListener("nuqta:installed", ()=>{ N.$("#installed").hidden = false; N.$("#installed p").textContent = "Installed! Open Nuqta from your apps or home screen."; N.$("#steps").hidden = true; });
+
+  // optional APK (e.g. made with PWABuilder) for people who prefer a file
+  if (C.app && C.app.apkUrl) { N.$("#apkBtn").href = C.app.apkUrl; N.$("#apkBtn").hidden = false; }
+})();
+</script>
+</body>
+</html>

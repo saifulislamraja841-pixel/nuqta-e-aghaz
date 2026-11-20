@@ -62,6 +62,11 @@
     copy: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>',
     logout: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10"/>',
     refresh: '<path d="M20 11A8 8 0 0 0 5.5 7M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/>',
+    share: '<path d="M12 15V3M8 7l4-4 4 4"/><path d="M7 10H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/>',
+    addbox: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7"/>',
+    dots: '<circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/>',
+    compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+    phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
     grid: '<rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
     pinned: '<path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v8"/>',
@@ -355,4 +360,57 @@
     const b = N.$(".burger", nav); b && b.addEventListener("click", () => nav.classList.toggle("open"));
     N.$$(".nav-links a", nav).forEach((a) => a.addEventListener("click", () => nav.classList.remove("open")));
   };
+})();
+
+/* ============ App (installable web app) ============ */
+(function () {
+  const N = window.Nuqta; if (!N) return;
+  const path = location.pathname.replace(/^.*\//, "") || "index.html";
+  N.isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  N.isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  N.isAndroid = () => /android/i.test(navigator.userAgent);
+  N.isMobile = () => N.isIOS() || N.isAndroid();
+
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+  }
+  /* Android/Chrome install prompt: kept so the install page / banner can trigger it */
+  N.installPrompt = null;
+  addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); N.installPrompt = e; document.dispatchEvent(new Event("nuqta:installable")); });
+  addEventListener("appinstalled", () => { N.installPrompt = null; N.store.set("nuqta_app_installed", 1); document.dispatchEvent(new Event("nuqta:installed")); });
+  N.promptInstall = async () => {
+    if (!N.installPrompt) return false;
+    N.installPrompt.prompt();
+    const r = await N.installPrompt.userChoice; N.installPrompt = null;
+    return r && r.outcome === "accepted";
+  };
+
+  const ready = (fn) => (document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", fn) : fn());
+  ready(() => {
+    /* Inside the installed app: bottom tab bar on every page (there is no browser back button) */
+    if (N.isStandalone() && path !== "dashboard.html") {
+      document.body.classList.add("standalone");
+      const tabs = [["app.html", "grid", "Home"], ["index.html", "star", "Event"], ["competitions.html", "trophy", "Compete"], ["portal.html", "users", "Portal"], ["faq.html", "bulb", "Help"]];
+      const bar = document.createElement("nav");
+      bar.className = "tabbar"; bar.setAttribute("aria-label", "App navigation");
+      bar.innerHTML = tabs.map(([href, ic, label]) => `<a href="${href}" class="${href === path ? "on" : ""}">${N.icon(ic)}<span>${label}</span></a>`).join("");
+      document.body.appendChild(bar);
+      N.$$('a[href="index.html"].brand').forEach((a) => (a.href = "app.html"));
+    }
+    /* On a phone's browser (not installed yet): small "Get the app" bar, once a week at most */
+    const quiet = ["install.html", "app.html", "dashboard.html"].includes(path);
+    const last = Number(N.store.get("nuqta_app_nudge") || 0);
+    if (!quiet && N.isMobile() && !N.isStandalone() && !N.store.get("nuqta_app_installed") && Date.now() - last > 7 * 864e5) {
+      setTimeout(() => {
+        const b = document.createElement("div");
+        b.className = "app-nudge";
+        b.innerHTML = `<img src="/assets/app/icon-192.png" alt=""><div><b>Get the Nuqta app</b><span>Updates, your portal and registrations in one tap</span></div>
+          <a class="btn btn-primary btn-sm" href="install.html">Get app</a><button aria-label="Close">×</button>`;
+        document.body.appendChild(b);
+        requestAnimationFrame(() => b.classList.add("show"));
+        N.$("button", b).addEventListener("click", () => { N.store.set("nuqta_app_nudge", Date.now()); b.remove(); });
+        N.$("a", b).addEventListener("click", () => N.store.set("nuqta_app_nudge", Date.now()));
+      }, 2500);
+    }
+  });
 })();

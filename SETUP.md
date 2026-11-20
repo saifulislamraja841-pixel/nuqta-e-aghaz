@@ -43,6 +43,17 @@ Activity is only recorded from the moment the updated script is deployed. Earlie
 
 **Updating the script:** paste the new `Code.gs` but **keep your own `ADMIN_KEY` line**. Save (no need to run `setup` again; the new tabs create themselves), then **Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy**. The `/exec` URL stays the same.
 
+## 4. Mobile app (Android + iPhone, no app store)
+The site is also an installable app. **Share this link on WhatsApp: `https://www.nuqtaeaghaz.org/install.html`**. The page shows each phone its own steps:
+- **Android (Chrome):** an "Install the app" button, or ⋮ → *Install app*. It appears in the app drawer like any other app.
+- **iPhone (Safari):** Share → *Add to Home Screen*. Apple does not allow installing apps from a file, so this is the only way without the App Store.
+
+Inside the app: its own home screen (`app.html`) with countdown, portal status, quick actions and announcements; a bottom tab bar on every page; people stay signed in to the portal for 14 days; recent screens open offline.
+
+Files: `manifest.webmanifest` (name, icons), `sw.js` (offline cache; change `VERSION` in it after big updates), `app.html`, `install.html`, `offline.html`, `assets/mobile.css`, `assets/app/` (icons). The site must be on **https** for installing to work.
+
+**Optional Android APK file** (for people who'd rather install a file): once the site is live, go to **pwabuilder.com**, enter `https://www.nuqtaeaghaz.org/app.html`, choose **Android → Generate package** and download the zip. Upload the `.apk` from it to the server (e.g. `/downloads/nuqta.apk`) and set `app.apkUrl` in `config.js`. The install page then shows a "Download the APK file" button. Android will ask people to allow installing from their browser or WhatsApp the first time.
+
 ## Privacy
 - Ambassador names and referral counts are **not shown publicly**. Each ambassador sees only their own code, link, counts and rank in **My Portal** (reference number + password; other attendees use email + last 4 digits of their phone).
 - The full leaderboard is only in the team dashboard (admin key).

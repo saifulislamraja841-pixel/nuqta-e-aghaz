@@ -25,6 +25,11 @@ window.NUQTA_CONFIG = {
     linkedin: "https://linkedin.com/company/nuqta_e_aghaz",
   },
 
+  /* Mobile app (installable web app). Share www.nuqtaeaghaz.org/install.html on WhatsApp.
+     apkUrl → optional Android APK file (e.g. built free at pwabuilder.com), e.g. "/downloads/nuqta.apk".
+              Leave "" to only offer the normal install (works on Android and iPhone). */
+  app: { apkUrl: "" },
+
   /* Google Apps Script Web App URL (ends with /exec).
      Leave empty "" to run the dashboard & portal on DEMO data. */
   scriptUrl: "https://script.google.com/macros/s/AKfycbxcFtZMK9XC2A7nJE0R0gqMUjWKIjscb17Fo2s2ydkiAeID5Dy8izk6-ZKnr0EW3b_S5w/exec",
