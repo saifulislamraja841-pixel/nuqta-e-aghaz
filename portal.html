@@ -5,7 +5,7 @@
 <title>My Portal · Nuqta-e-Aghaz</title>
 <link rel="icon" href="assets/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261120"><link rel="stylesheet" href="assets/app.css?v=20261120">
+<link rel="stylesheet" href="assets/style.css?v=20261120m"><link rel="stylesheet" href="assets/app.css?v=20261120m">
 </head>
 <body class="app">
 <div class="aurora"></div><canvas id="dots"></canvas><div class="grain"></div>
@@ -38,14 +38,30 @@
 
   <div class="row r-1-1" id="mid"></div>
 
+  <div class="row r-1-2" id="contact">
+    <form class="panel" id="msgForm">
+      <h3>Ask the team</h3><div class="sub">Send a question or message. The team's reply will appear here, and in your email.</div>
+      <div class="field"><label for="mTopic">Topic</label><select class="select" id="mTopic">
+        <option>General question</option><option>Registration / payment</option><option>Competitions</option><option>Talent Award</option>
+        <option>Ambassador program</option><option>Event day</option><option>Other</option></select></div>
+      <div class="field"><label for="mText">Your message</label><textarea class="textarea" id="mText" maxlength="2000" required placeholder="Write your question…"></textarea>
+        <span class="count" id="mCount">0 / 2000</span></div>
+      <button class="btn btn-primary btn-block" type="submit"><span data-icon="send"></span>Send message</button>
+    </form>
+    <div class="panel">
+      <div class="panel-head"><div><h3>Your messages</h3><div class="sub">Questions you've sent and the team's replies</div></div><span class="badge" id="msgCount"></span></div>
+      <div id="msgs"></div>
+    </div>
+  </div>
+
   <div class="panel">
     <div class="panel-head"><div><h3>Announcements for you</h3><div class="sub">Updates from the organising team</div></div><span class="badge" id="annCount"></span></div>
     <div id="ann"></div>
   </div>
 </div>
 
-<script src="config.js?v=20261120"></script>
-<script src="assets/core.js?v=20261120"></script>
+<script src="config.js?v=20261120m"></script>
+<script src="assets/core.js?v=20261120m"></script>
 <script>
 (function(){
   const N = Nuqta, C = N.C; let CRED = N.session.get("nuqta_portal");
@@ -118,7 +134,33 @@
     N.$("#ann").innerHTML = list.map(a=>`<div class="ann"><div class="h">${a.pinned?`<span class="badge gold">${N.icon("pinned")}Pinned</span>`:""}<b>${N.esc(a.title)}</b></div>
       <p>${N.esc(a.message)}</p>${a.link?`<a href="${N.esc(a.link)}" target="_blank" rel="noopener" style="color:var(--lilac);font-size:13px">${N.esc(a.link)}</a>`:""}
       <div class="m"><span class="badge">${N.esc(N.audienceLabel(a.audience).replace(/^Personal · .*/,"For you"))}</span>${N.timeAgo(a.ts)}</div></div>`).join("") || '<div class="empty">No announcements yet. Check back closer to the event.</div>';
+    renderMsgs(d.messages);
   }
+
+  /* messages to the team */
+  const statusBadge = s => s === "Answered" ? '<span class="badge ok">Answered</span>' : s === "Closed" ? '<span class="badge">Closed</span>' : '<span class="badge gold">Waiting for reply</span>';
+  function renderMsgs(list){
+    list = list || [];
+    N.$("#msgCount").textContent = list.length ? list.length + " message" + (list.length === 1 ? "" : "s") : "";
+    N.$("#msgs").innerHTML = list.map(m=>`<div class="msg">
+        <div class="h"><b>${N.esc(m.topic)}</b>${statusBadge(m.status)}<span class="t">${N.timeAgo(m.ts)}</span></div>
+        <p class="q">${N.esc(m.message)}</p>
+        ${m.reply ? `<div class="reply"><span>Team Nuqta-e-Aghaz · ${N.timeAgo(m.repliedAt || m.ts)}</span><p>${N.esc(m.reply)}</p></div>` : ""}
+      </div>`).join("") || '<div class="empty">No messages yet. Ask us anything about the event.</div>';
+  }
+  N.$("#mText").addEventListener("input", e=>N.$("#mCount").textContent = e.target.value.length + " / 2000");
+  N.$("#msgForm").addEventListener("submit", async e=>{
+    e.preventDefault();
+    const text = N.$("#mText").value.trim(); if (!text) return;
+    const b = N.$("#msgForm button"), label = b.innerHTML; b.disabled = true; b.textContent = "Sending…";
+    try {
+      const r = await N.post({ action: "sendMessage", token: CRED && CRED.token, topic: N.$("#mTopic").value, message: text });
+      if (r.expired) { N.session.del("nuqta_portal"); location.reload(); return; }
+      if (!r.ok) throw new Error(r.message || "Could not send");
+      renderMsgs(r.messages); e.target.reset(); N.$("#mCount").textContent = "0 / 2000"; N.toast("Message sent. We'll reply here soon.");
+    } catch(err){ N.toast(err.message); }
+    b.disabled = false; b.innerHTML = label;
+  });
 })();
 </script>
 </body>

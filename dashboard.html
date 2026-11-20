@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="assets/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261120"><link rel="stylesheet" href="assets/app.css?v=20261120">
+<link rel="stylesheet" href="assets/style.css?v=20261120m"><link rel="stylesheet" href="assets/app.css?v=20261120m">
 </head>
 <body class="app">
 <div class="aurora"></div><div class="grain"></div>
@@ -32,6 +32,8 @@
     <a class="tab" data-view="ambassadors" data-icon="users">Ambassadors</a>
     <a class="tab" data-view="competitions" data-icon="trophy">Competitions & Awards</a>
     <a class="tab" data-view="announce" data-icon="bell">Announcements</a>
+    <a class="tab" data-view="messages" data-icon="mail">Messages <span class="cnt" id="msgBadge"></span></a>
+    <a class="tab" data-view="activity" data-icon="chart">Portal activity</a>
     <div class="grow"></div>
     <div class="mini" id="syncInfo"></div>
     <a class="tab" id="logout" data-icon="logout">Sign out</a>
@@ -100,11 +102,29 @@
         <div class="panel"><h3>Published</h3><div class="sub">Newest first</div><div id="annList"></div></div>
       </div>
     </section>
+
+    <!-- MESSAGES -->
+    <section class="view" id="v-messages">
+      <div class="topbar"><h1>Messages</h1>
+        <div class="seg" id="msgFilter"><button data-f="Open" class="on">Waiting</button><button data-f="Answered">Answered</button><button data-f="Closed">Closed</button><button data-f="all">All</button></div>
+        <input class="input" id="msgSearch" placeholder="Search name, email or text" style="max-width:240px">
+        <button class="btn btn-ghost btn-sm" id="msgRefresh"><span data-icon="refresh"></span>Refresh</button></div>
+      <div class="kpis" id="msgKpis" style="grid-template-columns:repeat(4,1fr)"></div>
+      <div class="panel"><h3 id="msgTitle">Waiting for a reply</h3><div class="sub">Sent by registered people from their portal. Your reply shows in their portal and is emailed to them.</div><div id="msgList"></div></div>
+    </section>
+
+    <!-- PORTAL ACTIVITY -->
+    <section class="view" id="v-activity">
+      <div class="topbar"><h1>Portal activity</h1><span class="meta" id="actUpdated"></span>
+        <button class="btn btn-ghost btn-sm" id="actRefresh"><span data-icon="refresh"></span>Refresh</button>
+        <button class="btn btn-ghost btn-sm" id="actCsv"><span data-icon="download"></span>Export CSV</button></div>
+      <div id="actBody"><div class="panel empty"><div class="spinner" style="margin:0 auto 12px"></div>Loading portal activity…</div></div>
+    </section>
   </main>
 </div>
 
-<script src="config.js?v=20261120"></script>
-<script src="assets/core.js?v=20261120"></script>
+<script src="config.js?v=20261120m"></script>
+<script src="assets/core.js?v=20261120m"></script>
 <script>
 (function(){
   const N = Nuqta; let KEY = N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
@@ -114,6 +134,7 @@
   async function load(){
     DATA = await N.api("stats", { key: KEY });
     render();
+    loadMessages().catch(()=>{});
   }
   N.$("#loginForm").addEventListener("submit", async e=>{
     e.preventDefault(); KEY = N.$("#key").value.trim(); N.$("#loginErr").textContent = "";
@@ -133,6 +154,8 @@
     N.$$(".side a.tab").forEach(x=>x.classList.remove("active")); t.classList.add("active");
     N.$$(".view").forEach(v=>v.classList.toggle("active", v.id === "v-" + t.dataset.view));
     scrollTo({top:0}); if (t.dataset.view === "overview") drawLine();
+    if (t.dataset.view === "activity") loadActivity();
+    if (t.dataset.view === "messages") loadMessages().catch(()=>{});
   }));
 
   const pct = (a,b)=> b ? Math.round(a/b*100) : 0;
@@ -244,6 +267,131 @@
       DATA.announcements = r.announcements; renderAnn(r.announcements); e.target.reset(); N.$("#aEmailWrap").hidden = true; N.toast("Published to portals");
     } catch(err){ N.toast("Could not publish: " + err.message); }
     btn.disabled = false;
+  });
+
+  /* ---------- messages inbox ---------- */
+  let MSGS = [], msgF = "Open";
+  async function loadMessages(){ const r = await N.api("messages", { key: KEY }); MSGS = r.messages || []; renderMsgs(); }
+  const mBadge = s => s === "Answered" ? '<span class="badge ok">Answered</span>' : s === "Closed" ? '<span class="badge">Closed</span>' : '<span class="badge gold">Waiting</span>';
+  function renderMsgs(){
+    const open = MSGS.filter(m=>m.status !== "Answered" && m.status !== "Closed");
+    N.$("#msgBadge").textContent = open.length || "";
+    const ans = MSGS.filter(m=>m.status === "Answered"), fast = ans.filter(m=>m.repliedAt && new Date(m.repliedAt) - new Date(m.ts) <= 864e5).length;
+    N.$("#msgKpis").innerHTML = kpi("mail","Waiting for reply",open.length,"Not answered yet",true) + kpi("check","Answered",ans.length, ans.length ? pct(fast,ans.length)+"% answered within 24 hours" : "") +
+      kpi("bell","Closed",MSGS.filter(m=>m.status==="Closed").length,"No reply needed") + kpi("users","People who wrote",new Set(MSGS.map(m=>m.email)).size, N.fmt(MSGS.length) + " messages in total");
+    const q = N.$("#msgSearch").value.toLowerCase();
+    let list = msgF === "all" ? MSGS : msgF === "Open" ? open : MSGS.filter(m=>m.status === msgF);
+    if (q) list = list.filter(m=>(m.name+" "+m.email+" "+m.topic+" "+m.message+" "+m.reply).toLowerCase().includes(q));
+    if (msgF === "Open") list = [...list].sort((a,b)=>new Date(a.ts)-new Date(b.ts));   // oldest waiting first
+    N.$("#msgTitle").textContent = {Open:"Waiting for a reply",Answered:"Answered",Closed:"Closed",all:"All messages"}[msgF] + " · " + list.length;
+    N.$("#msgList").innerHTML = list.map(m=>`<div class="msg" data-id="${N.esc(m.id)}">
+      <div class="h"><b>${N.esc(m.name || m.email)}</b><span class="badge">${N.esc(m.topic)}</span>${mBadge(m.status)}<span class="t">${N.timeAgo(m.ts)}</span></div>
+      <div class="who">${N.esc(m.email)}</div>
+      <p class="q">${N.esc(m.message)}</p>
+      ${m.reply ? `<div class="reply"><span>Your reply · ${N.timeAgo(m.repliedAt || m.ts)}</span><p>${N.esc(m.reply)}</p></div>` : ""}
+      <div class="replybox">
+        ${m.status === "Closed" ? "" : `<textarea class="textarea" placeholder="${m.reply ? "Send another reply (replaces the one above)…" : "Write your reply…"}"></textarea>`}
+        <div class="inline">
+          ${m.status === "Closed" ? "" : `<button class="btn btn-primary btn-sm" data-act="reply">${N.icon("send")}Send reply</button>`}
+          ${m.status === "Closed" ? `<button class="btn btn-ghost btn-sm" data-act="Open">Reopen</button>` : `<button class="btn btn-ghost btn-sm" data-act="Closed">Close without reply</button>`}
+          <a class="btn btn-ghost btn-sm" href="mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent("Re: " + m.topic)}">${N.icon("mail")}Email</a>
+        </div>
+      </div></div>`).join("") || `<div class="empty">${msgF === "Open" ? "All caught up. No messages are waiting." : "No messages here."}</div>`;
+  }
+  N.$("#msgList").addEventListener("click", async e=>{
+    const b = e.target.closest("[data-act]"); if (!b) return;
+    const box = b.closest(".msg"), id = box.dataset.id, act = b.dataset.act;
+    const payload = act === "reply" ? { action:"replyMessage", key:KEY, id, reply: N.$("textarea", box).value.trim() } : { action:"messageStatus", key:KEY, id, status: act };
+    if (act === "reply" && !payload.reply) return N.toast("Write a reply first");
+    b.disabled = true;
+    try { const r = await N.post(payload); MSGS = r.messages; renderMsgs(); N.toast(act === "reply" ? "Reply sent" : act === "Closed" ? "Closed" : "Reopened"); }
+    catch(err){ N.toast("Could not save: " + err.message); b.disabled = false; }
+  });
+  N.$$("#msgFilter button").forEach(b=>b.addEventListener("click", ()=>{ msgF = b.dataset.f; N.$$("#msgFilter button").forEach(x=>x.classList.toggle("on", x === b)); renderMsgs(); }));
+  N.$("#msgSearch").addEventListener("input", renderMsgs);
+  N.$("#msgRefresh").addEventListener("click", ()=>loadMessages().then(()=>N.toast("Updated")));
+
+  /* ---------- portal activity ---------- */
+  let ACT = null, actF = "all", actG = "all";
+  async function loadActivity(force){
+    if (ACT && !force) return renderActivity();
+    try { ACT = await N.api("activity", { key: KEY }); renderActivity(); }
+    catch(err){ N.$("#actBody").innerHTML = `<div class="panel empty">Could not load portal activity: ${N.esc(err.message)}</div>`; }
+  }
+  const fmtWhen = s => s ? new Date(s).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+  function renderActivity(){
+    const T = ACT.totals, G = ACT.groups;
+    N.$("#actUpdated").textContent = "Updated " + new Date(ACT.generatedAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+    N.$("#actBody").innerHTML = `
+      <div class="kpis">${kpi("users","Portal accounts",T.accounts,"Ambassadors + participants",true) + kpi("check","Have logged in",T.loggedIn, pct(T.loggedIn,T.accounts)+"% of accounts") +
+        kpi("bell","Never logged in",T.never,"Candidates for a reminder") + kpi("star","Active today",T.active24h,"Last 24 hours") +
+        kpi("chart","Active this week",T.active7d,"Last 7 days") + kpi("link","Total sign-ins",T.logins,"Every successful login")}</div>
+      <div class="row r-2-1">
+        <div class="panel"><h3>People active in the portal per day</h3><div class="sub">Last 14 days · unique people who signed in or opened the portal · hover a bar</div><div class="chart" id="actChart"></div></div>
+        <div class="panel"><h3>Logged in, by group</h3><div class="sub">Share of each group that has opened the portal at least once</div><div class="funnel" id="actGroups"></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div><h3>People</h3><div class="sub" id="actCount"></div></div>
+          <div class="inline">
+            <div class="seg" id="actFilter"><button data-f="all">All</button><button data-f="in">Logged in</button><button data-f="week">Active this week</button><button data-f="never">Never logged in</button></div>
+            <select class="select" id="actGroup" style="width:auto"><option value="all">Everyone</option><option value="Ambassador">Ambassadors</option><option value="Participant">Participants</option></select>
+            <input class="input" id="actSearch" placeholder="Search name, email, code" style="max-width:220px">
+          </div></div>
+        <div class="tbl-wrap"><table class="t" id="actTable"></table></div>
+      </div>`;
+    N.$$("#actFilter button").forEach(b=>{ b.classList.toggle("on", b.dataset.f === actF); b.addEventListener("click", ()=>{ actF = b.dataset.f; N.$$("#actFilter button").forEach(x=>x.classList.toggle("on", x === b)); renderPeople(); }); });
+    N.$("#actGroup").value = actG; N.$("#actGroup").addEventListener("change", e=>{ actG = e.target.value; renderPeople(); });
+    N.$("#actSearch").addEventListener("input", renderPeople);
+    const rows = [["Ambassadors", G.ambassadors], ["Participants", G.participants]];
+    N.$("#actGroups").innerHTML = rows.map(([n,v])=>`<div class="fn"><div class="top"><span>${n}</span><b>${N.fmt(v.loggedIn)} / ${N.fmt(v.total)} · ${pct(v.loggedIn,v.total)}%</b></div><div class="bar"><i data-w="${pct(v.loggedIn,v.total)}"></i></div></div>`).join("");
+    requestAnimationFrame(()=>N.$$("#actGroups i[data-w]").forEach(i=>i.style.width = i.dataset.w + "%"));
+    drawBars(); renderPeople();
+  }
+  function drawBars(){
+    const el = N.$("#actChart"); if (!el || !ACT) return;
+    const pts = ACT.daily, W = Math.max(320, el.clientWidth || 700), H = 240, m = {l:36,r:8,t:14,b:28};
+    const max = Math.max(5, ...pts.map(p=>p.people)), step = Math.pow(10, Math.floor(Math.log10(max))), top = Math.ceil(max/step)*step;
+    const bw = (W-m.l-m.r)/pts.length, y = v => H-m.b - v/top*(H-m.t-m.b), ticks = [0,.5,1].map(f=>Math.round(top*f));
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="People active in the portal per day">
+      <g class="grid">${ticks.map(t=>`<line x1="${m.l}" x2="${W-m.r}" y1="${y(t)}" y2="${y(t)}"/>`).join("")}</g>
+      <g class="axis">${ticks.map(t=>`<text x="${m.l-8}" y="${y(t)+4}" text-anchor="end">${t}</text>`).join("")}
+        ${pts.map((p,i)=>i%2===0||i===pts.length-1?`<text x="${m.l+bw*i+bw/2}" y="${H-8}" text-anchor="middle">${new Date(p.date).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</text>`:"").join("")}</g>
+      ${pts.map((p,i)=>{ const x = m.l+bw*i+bw*0.18, w = bw*0.64, yy = y(p.people), h = Math.max(0, H-m.b-yy);
+        return `<path class="bar-m" data-i="${i}" fill="#9d4fe6" d="M${x},${H-m.b}V${yy+Math.min(4,h)}Q${x},${yy} ${x+Math.min(4,w/2)},${yy}H${x+w-Math.min(4,w/2)}Q${x+w},${yy} ${x+w},${yy+Math.min(4,h)}V${H-m.b}Z"/>
+          <rect data-i="${i}" x="${m.l+bw*i}" y="${m.t}" width="${bw}" height="${H-m.t-m.b}" fill="transparent"/>`; }).join("")}
+      </svg><div class="tip" id="atip"></div>`;
+    const svg = N.$("svg", el), tip = N.$("#atip", el);
+    N.$$("rect[data-i]", el).forEach(r=>{
+      r.addEventListener("pointerenter", ()=>{ const i = +r.dataset.i, p = pts[i], b = svg.getBoundingClientRect();
+        N.$$(".bar-m", el).forEach(x=>x.setAttribute("fill", x.dataset.i == i ? "#b46cff" : "#9d4fe6"));
+        tip.innerHTML = `<b>${p.people} people</b>${p.logins} sign-ins · ${new Date(p.date).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}`;
+        tip.style.left = (m.l+bw*i+bw/2) * b.width / W + "px"; tip.style.top = y(p.people) * b.height / H + "px"; tip.style.opacity = 1; });
+      r.addEventListener("pointerleave", ()=>{ tip.style.opacity = 0; N.$$(".bar-m", el).forEach(x=>x.setAttribute("fill","#9d4fe6")); });
+    });
+  }
+  addEventListener("resize", ()=>{ clearTimeout(drawBars._t); drawBars._t = setTimeout(drawBars, 150); });
+  function filteredPeople(){
+    const q = (N.$("#actSearch") ? N.$("#actSearch").value : "").toLowerCase(), wk = Date.now() - 7*864e5;
+    return ACT.people.filter(p=> (actG === "all" || p.type.indexOf(actG) >= 0) &&
+      (actF === "all" || (actF === "in" && p.lastSeen) || (actF === "never" && !p.lastSeen) || (actF === "week" && p.lastSeen && new Date(p.lastSeen) >= wk)) &&
+      (!q || (p.name+" "+p.email+" "+p.code).toLowerCase().includes(q)));
+  }
+  function renderPeople(){
+    const list = filteredPeople(), shown = list.slice(0, 400);
+    N.$("#actCount").textContent = N.fmt(list.length) + " people" + (list.length > shown.length ? " · showing the first 400 (use search or Export CSV for all)" : "");
+    N.$("#actTable").innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Type</th><th>Code / registered for</th><th>Last active</th><th>First login</th><th class="num">Sign-ins</th><th class="num">Visits</th></tr></thead>
+      <tbody>${shown.map(p=>`<tr><td style="white-space:nowrap">${N.esc(p.name || "—")}</td><td style="color:var(--muted)">${N.esc(p.email)}</td><td>${N.esc(p.type)}</td>
+        <td>${p.code?`<span class="code">${N.esc(p.code)}</span>`:`<span style="color:var(--muted)">${N.esc(p.forms)}</span>`}</td>
+        <td class="when">${p.lastSeen ? N.timeAgo(p.lastSeen) : '<span class="pill-never">Never</span>'}</td><td class="when">${fmtWhen(p.firstSeen)}</td>
+        <td class="num">${p.logins}</td><td class="num">${p.visits}</td></tr>`).join("") || '<tr><td colspan="8" class="empty">Nobody matches.</td></tr>'}</tbody>`;
+  }
+  N.$("#actRefresh").addEventListener("click", ()=>loadActivity(true).then(()=>N.toast("Updated")));
+  N.$("#actCsv").addEventListener("click", ()=>{
+    if (!ACT) return;
+    const rows = [["Name","Email","Type","Code","Registered for","Last active","First login","Sign-ins","Visits","Days active"],
+      ...filteredPeople().map(p=>[p.name,p.email,p.type,p.code,p.forms,fmtWhen(p.lastSeen) || "Never",fmtWhen(p.firstSeen),p.logins,p.visits,p.daysActive])];
+    const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download = "nuqta-portal-activity.csv"; a.click();
   });
 })();
 </script>

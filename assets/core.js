@@ -167,6 +167,11 @@
     { id: "a2", ts: new Date(Date.now() - 26 * 3600e3).toISOString(), title: "Ambassador briefing — Thursday 5 PM", message: "All campus ambassadors: online briefing on Thursday at 5:00 PM. You'll get your poster kit and leaderboard rules.", audience: "ambassadors", link: "", pinned: false },
     { id: "a1", ts: new Date(Date.now() - 3 * 86400e3).toISOString(), title: "Competition rules published", message: "Rules and time limits for Qirat, Naat, Urdu & English Debate, Painting and Calligraphy are now available. Debate topics will be shared 48 hours before the event.", audience: "competitors", link: "", pinned: false },
   ];
+  const demoMessages = () => N.store.get("nuqta_demo_msg") || [
+    { id: "m3", ts: new Date(Date.now() - 40 * 60e3).toISOString(), email: "student@demo.pk", name: "Ayesha Raza", topic: "Registration / payment", message: "I paid through JazzCash yesterday but my portal still shows the main event as not registered. What should I do?", status: "Open", reply: "", repliedAt: "" },
+    { id: "m2", ts: new Date(Date.now() - 5 * 3600e3).toISOString(), email: "ambassador@demo.pk", name: "Bilal Ahmed", topic: "Ambassador program", message: "Do registrations from other universities also count towards my referrals?", status: "Answered", reply: "Yes! Any registration that uses your code counts, whatever the university.", repliedAt: new Date(Date.now() - 4 * 3600e3).toISOString() },
+    { id: "m1", ts: new Date(Date.now() - 26 * 3600e3).toISOString(), email: "hamza.k@demo.pk", name: "Hamza Khan", topic: "Competitions", message: "Can I take part in both Urdu Debate and English Debate?", status: "Open", reply: "", repliedAt: "" },
+  ];
   N.demo = async (action, params) => {
     await new Promise((r) => setTimeout(r, 350));
     seed = 7;
@@ -220,6 +225,38 @@
           competitions: ["Urdu Debate", "Calligraphy"], talent: { applied: !isAmb }, stall: null,
         },
         announcements: demoAnnouncements().filter((a) => ["all", "attendees", "competitors", isAmb ? "ambassadors" : "talent"].includes(a.audience)),
+        messages: demoMessages().filter((m) => m.email === (isAmb ? "ambassador@demo.pk" : "student@demo.pk")),
+      };
+    }
+    if (action === "messages") return { demo: true, messages: demoMessages() };
+    if (action === "activity") {
+      const people = [];
+      lb.forEach((a, i) => {
+        const seen = rnd() < 0.78, last = seen ? Date.now() - Math.pow(rnd(), 2) * 12 * 864e5 : 0;
+        people.push({ email: a.name.toLowerCase().replace(/\s+/g, ".") + i + "@demo.pk", name: a.name, type: "Ambassador", code: a.code, forms: "",
+          firstSeen: seen ? new Date(last - rnd() * 4 * 864e5).toISOString() : "", lastSeen: seen ? new Date(last).toISOString() : "",
+          logins: seen ? 1 + Math.floor(rnd() * 6) : 0, visits: seen ? Math.floor(rnd() * 14) : 0, daysActive: seen ? 1 + Math.floor(rnd() * 7) : 0 });
+      });
+      for (let i = 0; i < 640; i++) {
+        const nm = pick(FN) + " " + pick(LN), seen = rnd() < 0.41, last = seen ? Date.now() - Math.pow(rnd(), 1.6) * 13 * 864e5 : 0;
+        people.push({ email: nm.toLowerCase().replace(/\s+/g, ".") + (i + 200) + "@demo.pk", name: nm, type: "Participant", code: "",
+          forms: pick(["Main Event", "Main Event", "Main Event, Competitions", "Competitions", "Talent Award", "Main Event, Talent Award"]),
+          firstSeen: seen ? new Date(last - rnd() * 3 * 864e5).toISOString() : "", lastSeen: seen ? new Date(last).toISOString() : "",
+          logins: seen ? 1 + Math.floor(rnd() * 3) : 0, visits: seen ? Math.floor(rnd() * 6) : 0, daysActive: seen ? 1 + Math.floor(rnd() * 4) : 0 });
+      }
+      people.sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || "") || a.name.localeCompare(b.name));
+      const since = (ms) => people.filter((p) => p.lastSeen && Date.now() - new Date(p.lastSeen) <= ms).length;
+      const grp = (t) => { const g = people.filter((p) => p.type === t); return { total: g.length, loggedIn: g.filter((p) => p.lastSeen).length }; };
+      const daily = Array.from({ length: 14 }, (_, k) => {
+        const i = 13 - k, date = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10);
+        const ppl = Math.round((30 + rnd() * 35) * (1.9 - i / 13));
+        return { date, people: ppl, logins: Math.round(ppl * (0.45 + rnd() * 0.2)) };
+      });
+      return {
+        demo: true, generatedAt: new Date().toISOString(),
+        totals: { accounts: people.length, loggedIn: people.filter((p) => p.lastSeen).length, never: people.filter((p) => !p.lastSeen).length,
+          active24h: since(864e5), active7d: since(7 * 864e5), logins: people.reduce((s, p) => s + p.logins, 0) },
+        groups: { ambassadors: grp("Ambassador"), participants: grp("Participant") }, daily, people,
       };
     }
     return { demo: true };
@@ -231,6 +268,21 @@
       if (!user || !p.pass) return { ok: false, message: "Enter your username and password." };
       const d = await N.demo("portal", { email: /^nea/.test(user) ? "ambassador@demo.pk" : user });
       return Object.assign(d, { token: "demo:" + d.profile.email });
+    }
+    if (p.action === "sendMessage") {
+      const email = String(p.token || "").replace(/^demo:/, "").toLowerCase();
+      const d = await N.demo("portal", { email });
+      if (!String(p.message || "").trim()) return { ok: false, message: "Please write your message." };
+      const list = [{ id: "d" + Date.now(), ts: new Date().toISOString(), email: /amb/.test(email) || !/student|guest/.test(email) ? "ambassador@demo.pk" : "student@demo.pk",
+        name: d.profile.name, topic: p.topic, message: p.message, status: "Open", reply: "", repliedAt: "" }, ...demoMessages()];
+      N.store.set("nuqta_demo_msg", list);
+      return { ok: true, demo: true, messages: list.filter((m) => m.email === list[0].email) };
+    }
+    if (p.action === "replyMessage" || p.action === "messageStatus") {
+      const list = demoMessages().map((m) => m.id !== p.id ? m : p.action === "replyMessage"
+        ? { ...m, reply: p.reply, status: "Answered", repliedAt: new Date().toISOString() } : { ...m, status: p.status });
+      N.store.set("nuqta_demo_msg", list);
+      return { ok: true, demo: true, messages: list };
     }
     let list = demoAnnouncements();
     if (p.action === "announce") list = [{ id: "d" + Date.now(), ts: new Date().toISOString(), title: p.title, message: p.message, audience: p.audience, link: p.link || "", pinned: !!p.pinned }, ...list];

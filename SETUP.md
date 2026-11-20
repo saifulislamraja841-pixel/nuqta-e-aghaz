@@ -27,6 +27,16 @@ Responses are read **directly from the 4 forms** (all old and new responses), so
 ## 2. Site
 Paste the `/exec` URL into `scriptUrl` in `config.js`, commit and push. The VPS pulls from GitHub.
 
+## 3. Messages and portal activity
+Two new tabs are created in the data spreadsheet when the updated script first runs:
+
+- **Messages**: questions people send from **My Portal → Ask the team**. Answer them in **Dashboard → Messages**. The reply appears in their portal and is emailed to them (set `EMAIL_REPLIES = false` to stop the emails). You can also type a reply straight into the **Reply** column. Status is `Open`, `Answered` or `Closed`. To get an email for every new message, set `MESSAGE_ALERT_EMAIL` (e.g. `"info@nuqtaeaghaz.org"`). Each person can send at most 5 messages an hour.
+- **Portal Activity**: one row for each sign-in (`login`) and for each return visit while still signed in (`visit`, counted at most once every 30 minutes per person). **Dashboard → Portal activity** turns this into the report: accounts, who has logged in, who never has, active today and this week, people per day, and a searchable list you can export to CSV, e.g. to send a reminder to everyone who never logged in.
+
+Activity is only recorded from the moment the updated script is deployed. Earlier logins were not tracked.
+
+**Updating the script:** paste the new `Code.gs` but **keep your own `ADMIN_KEY` line**. Save (no need to run `setup` again; the new tabs create themselves), then **Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy**. The `/exec` URL stays the same.
+
 ## Privacy
 - Ambassador names and referral counts are **not shown publicly**. Each ambassador sees only their own code, link, counts and rank in **My Portal** (reference number + password; other attendees use email + last 4 digits of their phone).
 - The full leaderboard is only in the team dashboard (admin key).

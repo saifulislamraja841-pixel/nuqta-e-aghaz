@@ -12,6 +12,8 @@ const ADMIN_KEY = "change-this-to-a-long-secret";        // password for the tea
 const SITE_URL  = "https://www.nuqtaeaghaz.org/";        // where index.html is hosted (ends with /)
 const SEND_PARTICIPANT_EMAIL = true;                      // email new participants (main event, competitions, talent) their portal login
 const SEND_AMBASSADOR_EMAIL = true;                       // email new ambassadors their reference number + portal login
+const MESSAGE_ALERT_EMAIL = "";                           // e.g. "info@nuqtaeaghaz.org": get an email for every new portal message ("" = off; the dashboard inbox always shows them)
+const EMAIL_REPLIES = true;                               // also email your reply to the person (their portal always shows it)
 
 /* Labels for each form (used in the dashboard) */
 const TABS = {
@@ -60,8 +62,8 @@ const COL = {
    Ambassador form's own response sheet (columns Reference Number, Portal Password,
    Login Sent, Status). This spreadsheet keeps the announcements. */
 function setup() {
-  annSheet_(); partSheet_();
-  syncAmbassadors_(false);                                   // number existing rows, no emails
+  annSheet_(); partSheet_(); msgSheet_(); logSheet_();
+  syncAmbassadors_(false);                                  // number existing rows, no emails
   PropertiesService.getScriptProperties().setProperty("LOGIN_EMAILS_FROM", String(Date.now()));
   ScriptApp.getProjectTriggers().forEach(tr => ScriptApp.deleteTrigger(tr));
   Object.keys(FORM_IDS).forEach(k => {
@@ -121,7 +123,7 @@ function partSheet_() {
 }
 function partRows_() {
   const v = partSheet_().getDataRange().getValues().slice(1);
-  return v.filter(r => r[0]).map(r => ({ email: String(r[0]).trim().toLowerCase(), name: String(r[1] || ""), pass: String(r[3] || "").trim(), status: String(r[5] || "").toLowerCase() }));
+  return v.filter(r => r[0]).map(r => ({ email: String(r[0]).trim().toLowerCase(), name: String(r[1] || ""), forms: String(r[2] || ""), pass: String(r[3] || "").trim(), status: String(r[5] || "").toLowerCase() }));
 }
 /* Adds new participants, then emails anyone not yet emailed. Existing participants are only
    emailed after emailLoginsToExistingParticipants() has been run once. Returns emails sent. */
@@ -429,6 +431,11 @@ function stats_() {
    Everyone else: email + last 4 digits of their phone number.
    Returns a signed token that the portal uses for 14 days. */
 function login_(user, pass) {
+  const r = checkLogin_(user, pass);
+  if (r.ok && r.profile) logActivity_(r.profile.email, "login");
+  return r;
+}
+function checkLogin_(user, pass) {
   user = String(user || "").trim(); pass = String(pass || "").trim();
   if (!user || !pass) return { ok: false, message: "Enter your username and password." };
   const key = refKey_(user), em = user.toLowerCase();
@@ -488,7 +495,144 @@ function portalData_(email) {
   if (comps.length || D.competitions.length) aud.push("competitors");
   if (roles.talent.applied) aud.push("talent");
   if (roles.stall) aud.push("exhibitors");
-  return { ok: true, profile: { name: named.name, email, university: unied.uni }, roles, announcements: readAnn_().filter(a => aud.indexOf(a.audience) >= 0) };
+  return { ok: true, profile: { name: named.name, email, university: unied.uni }, roles, announcements: readAnn_().filter(a => aud.indexOf(a.audience) >= 0),
+    messages: readMessages_().filter(m => m.email === email) };
+}
+
+/* -------------------- PORTAL ACTIVITY (who logs in) -------------------- */
+/* "Portal Activity" tab: one row each time someone signs in ("login") or comes back to the
+   portal while still signed in ("visit", counted at most once every 30 minutes per person). */
+const LOG_TAB = "Portal Activity";
+function logSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(LOG_TAB);
+  if (!sh) { sh = ss.insertSheet(LOG_TAB); sh.appendRow(["Timestamp", "Email", "Event"]); sh.setFrozenRows(1); sh.getRange(1, 1, 1, 3).setFontWeight("bold"); }
+  return sh;
+}
+function logActivity_(email, event) {
+  email = String(email || "").trim().toLowerCase();
+  if (!email) return;
+  const cache = CacheService.getScriptCache(), k = "seen_" + email;
+  if (event === "visit" && cache.get(k)) return;
+  cache.put(k, "1", 1800);
+  try { logSheet_().appendRow([new Date(), email, event]); cache.remove("activity"); } catch (e) { Logger.log("Activity log: " + e); }
+}
+/* Everyone who has a portal account (ambassadors + participants), with their login history */
+function activity_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get("activity");
+  if (hit) return JSON.parse(hit);
+  const people = {};
+  const add = (email, name, type, extra) => {
+    if (!email) return;
+    const p = people[email] || (people[email] = { email, name: "", types: [], code: "", forms: "", firstSeen: null, lastSeen: null, logins: 0, visits: 0, days: {} });
+    if (!p.name && name) p.name = name;
+    if (p.types.indexOf(type) < 0) p.types.push(type);
+    Object.assign(p, extra || {});
+  };
+  ambRows_().forEach(a => add(a.email, a.name, "Ambassador", { code: a.code }));
+  partRows_().filter(p => !/skip|stop/.test(p.status)).forEach(p => add(p.email, p.name, "Participant", { forms: p.forms }));
+  const accounts = Object.keys(people).length;
+  const log = logSheet_().getDataRange().getValues().slice(1).filter(r => r[1] && r[0] instanceof Date);
+  log.forEach(r => {
+    const em = String(r[1]).trim().toLowerCase(), t = r[0];
+    if (!people[em]) add(em, "", "Other");
+    const p = people[em];
+    if (!p.firstSeen || t < p.firstSeen) p.firstSeen = t;
+    if (!p.lastSeen || t > p.lastSeen) p.lastSeen = t;
+    if (String(r[2]) === "login") p.logins++; else p.visits++;
+    p.days[dayKey_(t)] = 1;
+  });
+  const now = Date.now(), list = Object.keys(people).map(k => people[k]);
+  const since = ms => list.filter(p => p.lastSeen && now - p.lastSeen.getTime() <= ms).length;
+  const group = type => { const g = list.filter(p => p.types.indexOf(type) >= 0); return { total: g.length, loggedIn: g.filter(p => p.lastSeen).length }; };
+  const daily = [];
+  for (let i = 13; i >= 0; i--) {
+    const k = dayKey_(new Date(now - i * 864e5));
+    daily.push({ date: k, people: list.filter(p => p.days[k]).length, logins: log.filter(r => String(r[2]) === "login" && dayKey_(r[0]) === k).length });
+  }
+  const out = {
+    generatedAt: new Date().toISOString(),
+    totals: { accounts, loggedIn: list.filter(p => p.lastSeen).length, never: list.filter(p => !p.lastSeen).length,
+      active24h: since(864e5), active7d: since(7 * 864e5), logins: log.filter(r => String(r[2]) === "login").length },
+    groups: { ambassadors: group("Ambassador"), participants: group("Participant") },
+    daily,
+    people: list.map(p => ({ email: p.email, name: p.name, type: p.types.join(" + "), code: p.code, forms: p.forms,
+      firstSeen: p.firstSeen ? p.firstSeen.toISOString() : "", lastSeen: p.lastSeen ? p.lastSeen.toISOString() : "",
+      logins: p.logins, visits: p.visits, daysActive: Object.keys(p.days).length }))
+      .sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || "") || a.name.localeCompare(b.name)),
+  };
+  try { cache.put("activity", JSON.stringify(out), 120); } catch (e) { /* too big to cache */ }
+  return out;
+}
+
+/* -------------------- MESSAGES (portal → team) -------------------- */
+/* "Messages" tab: questions people send from their portal. Reply from the dashboard inbox
+   (or type in the Reply column); the reply shows in their portal. Status: Open / Answered / Closed. */
+const MSG_TAB = "Messages";
+const MSG_HEAD = ["ID", "Timestamp", "Email", "Name", "Topic", "Message", "Status", "Reply", "Replied At"];
+function msgSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(MSG_TAB);
+  if (!sh) { sh = ss.insertSheet(MSG_TAB); sh.appendRow(MSG_HEAD); sh.setFrozenRows(1); sh.getRange(1, 1, 1, MSG_HEAD.length).setFontWeight("bold"); }
+  return sh;
+}
+function readMessages_() {
+  const iso = v => v instanceof Date ? v.toISOString() : String(v || "");
+  return msgSheet_().getDataRange().getValues().slice(1).filter(r => r[0]).map(r => ({
+    id: String(r[0]), ts: iso(r[1]), email: String(r[2]).trim().toLowerCase(), name: String(r[3] || ""), topic: String(r[4] || ""),
+    message: String(r[5] || ""), status: String(r[6] || "Open"), reply: String(r[7] || ""), repliedAt: iso(r[8]),
+  })).sort((a, b) => new Date(b.ts) - new Date(a.ts));
+}
+function sendMessage_(token, topic, message) {
+  const email = fromToken_(token);
+  if (!email) return { ok: false, expired: true, message: "Please sign in again." };
+  message = String(message || "").trim(); topic = String(topic || "General question").trim().slice(0, 60);
+  if (message.length < 3) return { ok: false, message: "Please write your message." };
+  if (message.length > 2000) return { ok: false, message: "Please keep your message under 2,000 characters." };
+  const cache = CacheService.getScriptCache(), rk = "msgs_" + email, n = Number(cache.get(rk) || 0);
+  if (n >= 5) return { ok: false, message: "You've sent several messages in the last hour. Please wait for our reply." };
+  cache.put(rk, String(n + 1), 3600);
+  const acct = ambRows_().find(a => a.email === email) || partRows_().find(p => p.email === email) || {};
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try { msgSheet_().appendRow(["M" + Date.now(), new Date(), email, acct.name || "", topic, message, "Open", "", ""]); }
+  finally { lock.releaseLock(); }
+  if (MESSAGE_ALERT_EMAIL && MailApp.getRemainingDailyQuota() > MAIL_RESERVE) {
+    try {
+      MailApp.sendEmail({ to: MESSAGE_ALERT_EMAIL, replyTo: email, subject: "Portal message: " + topic + " — " + (acct.name || email),
+        htmlBody: "<b>" + (acct.name || "") + "</b> (" + email + ")" + (acct.code ? " · " + acct.code : "") + "<br><b>Topic:</b> " + topic +
+          "<br><br>" + message.replace(/</g, "&lt;").replace(/\n/g, "<br>") + "<br><br>Reply from the dashboard: " + SITE_URL + "dashboard.html" });
+    } catch (e) { Logger.log("Alert email failed: " + e); }
+  }
+  return { ok: true, messages: readMessages_().filter(m => m.email === email) };
+}
+function msgRow_(id) {
+  const sh = msgSheet_(), ids = sh.getRange(1, 1, sh.getLastRow(), 1).getValues();
+  for (let i = 1; i < ids.length; i++) if (String(ids[i][0]) === String(id)) return i + 1;
+  return 0;
+}
+function replyMessage_(id, reply) {
+  reply = String(reply || "").trim();
+  if (!reply) return { error: "Write a reply first" };
+  const row = msgRow_(id);
+  if (!row) return { error: "Message not found" };
+  const sh = msgSheet_(), r = sh.getRange(row, 1, 1, MSG_HEAD.length).getValues()[0];
+  sh.getRange(row, 7, 1, 3).setValues([["Answered", reply.slice(0, 5000), new Date()]]);
+  if (EMAIL_REPLIES && r[2] && MailApp.getRemainingDailyQuota() > MAIL_RESERVE) {
+    try {
+      MailApp.sendEmail({ to: String(r[2]), subject: "Reply from Team Nuqta-e-Aghaz: " + r[4],
+        htmlBody: "Assalam o Alaikum " + (r[3] || "") + ",<br><br>" + reply.replace(/</g, "&lt;").replace(/\n/g, "<br>") +
+          "<br><br><span style='color:#777'>Your message: " + String(r[5]).replace(/</g, "&lt;") + "</span><br><br>" +
+          "See all your messages in your portal: <a href='" + SITE_URL + "portal.html'>" + SITE_URL + "portal.html</a><br><br>— Team Nuqta-e-Aghaz" });
+    } catch (e) { Logger.log("Reply email failed: " + e); }
+  }
+  return { ok: true };
+}
+function setMessageStatus_(id, status) {
+  if (["Open", "Answered", "Closed"].indexOf(status) < 0) return { error: "Unknown status" };
+  const row = msgRow_(id);
+  if (!row) return { error: "Message not found" };
+  msgSheet_().getRange(row, 7).setValue(status);
+  return { ok: true };
 }
 
 /* -------------------- ANNOUNCEMENTS -------------------- */
@@ -513,8 +657,14 @@ function doGet(e) {
   const p = (e && e.parameter) || {};
   try {
     if (p.action === "stats") { if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" }); return json_(stats_()); }
+    if (p.action === "activity") { if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" }); return json_(activity_()); }
+    if (p.action === "messages") { if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" }); return json_({ messages: readMessages_() }); }
     if (p.action === "portal") {
-      if (p.token) { const em = fromToken_(p.token); return json_(em ? portalData_(em) : { ok: false, expired: true, message: "Please sign in again." }); }
+      if (p.token) {
+        const em = fromToken_(p.token);
+        if (em) logActivity_(em, "visit");
+        return json_(em ? portalData_(em) : { ok: false, expired: true, message: "Please sign in again." });
+      }
       return json_(portal_(p.email, p.phone4));
     }
     if (p.action === "announcements") return json_({ announcements: readAnn_().filter(a => a.audience === "all") });
@@ -526,7 +676,12 @@ function doPost(e) {
   try {
     const p = JSON.parse(e.postData.contents || "{}");
     if (p.action === "login") return json_(login_(p.user, p.pass));
+    if (p.action === "sendMessage") return json_(sendMessage_(p.token, p.topic, p.message));
     if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" });
+    if (p.action === "replyMessage" || p.action === "messageStatus") {
+      const r = p.action === "replyMessage" ? replyMessage_(p.id, p.reply) : setMessageStatus_(p.id, p.status);
+      return json_(r.error ? r : { ok: true, messages: readMessages_() });
+    }
     const sh = annSheet_();
     if (p.action === "announce") {
       if (!p.title || !p.message) return json_({ error: "Title and message are required" });
