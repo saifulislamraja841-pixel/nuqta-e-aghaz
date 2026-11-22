@@ -187,21 +187,31 @@
     txt: "text/plain", csv: "text/csv", zip: "application/zip", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
   const FILE_MAX = 6 * 1024 * 1024;
   const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
-  N.attacher = (el, { maxVoice = 120 } = {}) => {
-    let att = null, rec = null, timer = null, started = 0, stream = null;
+  N.attacher = (el, { maxVoice = 120, onSend = null } = {}) => {
+    let att = null, rec = null, timer = null, started = 0, stream = null, after = "";   // after: "" | "cancel" | "send"
     el.classList.add("attacher");
     el.innerHTML = `<div class="att-btns"><label class="btn btn-ghost btn-sm att-photo">${N.icon("image")}Photo<input type="file" accept="image/*" hidden></label>
       <button type="button" class="btn btn-ghost btn-sm att-voice">${N.icon("mic")}Voice note</button>
       <label class="btn btn-ghost btn-sm att-file">${N.icon("clip")}File<input type="file" accept="${Object.keys(FILE_TYPES).map((x) => "." + x).join(",")}" hidden></label></div><div class="att-prev"></div>`;
     const prev = N.$(".att-prev", el), vbtn = N.$(".att-voice", el), photo = N.$(".att-photo input", el), doc = N.$(".att-file input", el);
     const show = () => {
+      if (rec && rec.state === "recording") {               // recording: timer + Cancel / Send
+        prev.innerHTML = `<div class="rec-bar"><span class="rec-dot"></span><span class="rec-t">0:00</span><span class="rec-l">Recording…</span>
+          <button type="button" class="btn btn-ghost btn-sm rec-cancel">${N.icon("x")}Cancel</button>
+          <button type="button" class="btn btn-ghost btn-sm rec-stop" title="Stop and listen before sending">${N.icon("stop")}Stop</button>
+          <button type="button" class="btn btn-primary btn-sm rec-send">${N.icon("send")}Send</button></div>`;
+        N.$(".rec-cancel", prev).addEventListener("click", () => { after = "cancel"; stopRec(); });
+        N.$(".rec-send", prev).addEventListener("click", () => { after = "send"; stopRec(); });
+        N.$(".rec-stop", prev).addEventListener("click", () => { after = ""; stopRec(); });
+        return;
+      }
       if (!att) { prev.innerHTML = ""; el.classList.remove("has"); return; }
       el.classList.add("has");
       const src = att.url;
       prev.innerHTML = `<div class="att-chip">${att.kind === "image" ? `<img src="${src}" alt="Photo to send">`
         : att.kind === "voice" ? `<audio controls preload="metadata" src="${src}"></audio><span class="dur">${fmtDur(att.duration)}</span>`
         : `<span class="file-ic">${N.icon("clip")}</span><span class="fname">${N.esc(att.name)}<small>${fmtSize(att.blob.size)}</small></span>`}
-        <button type="button" class="icon-btn" title="Remove" aria-label="Remove">${N.icon("x")}</button></div>`;
+        <button type="button" class="icon-btn" title="Delete" aria-label="Delete">${N.icon("trash")}</button></div>`;
       N.$(".icon-btn", prev).addEventListener("click", () => api.clear());
     };
     photo.addEventListener("change", async () => {
@@ -229,20 +239,23 @@
       rec.onstop = () => {
         clearInterval(timer); stream.getTracks().forEach((t) => t.stop()); el.classList.remove("rec");
         vbtn.innerHTML = N.icon("mic") + "Voice note";
+        const what = after; after = "";
         const dur = (Date.now() - started) / 1000, mime = (rec.mimeType || type || "audio/webm").split(";")[0];
-        if (dur < 1 || !chunks.length) return N.toast("That recording was too short.");
+        if (what === "cancel") { show(); return N.toast("Voice note deleted."); }
+        if (dur < 1 || !chunks.length) { show(); return N.toast("That recording was too short."); }
         const b = new Blob(chunks, { type: mime });
         api.clear(); att = { kind: "voice", mime, blob: b, url: URL.createObjectURL(b), duration: Math.round(dur) }; show();
+        if (what === "send" && onSend) onSend();
       };
-      rec.start(500); started = Date.now(); el.classList.add("rec");
-      const tick = () => { const s = (Date.now() - started) / 1000; vbtn.innerHTML = N.icon("stop") + "Stop · " + fmtDur(s); if (s >= maxVoice) stopRec(); };
+      rec.start(500); started = Date.now(); el.classList.add("rec"); show();
+      const tick = () => { const s = (Date.now() - started) / 1000, t = N.$(".rec-t", prev); if (t) t.textContent = fmtDur(s); vbtn.innerHTML = N.icon("stop") + "Stop · " + fmtDur(s); if (s >= maxVoice) stopRec(); };
       tick(); timer = setInterval(tick, 250);
     });
     const api = {
       async get() { stopRec(); if (!att) return null; return { kind: att.kind, mime: att.mime, duration: att.duration, name: att.name || "", data: await blobToB64(att.blob) }; },
       has: () => !!att,
       recording: () => !!(rec && rec.state === "recording"),
-      clear() { if (att && att.url) URL.revokeObjectURL(att.url); att = null; show(); },
+      clear() { if (rec && rec.state === "recording") { after = "cancel"; stopRec(); } if (att && att.url) URL.revokeObjectURL(att.url); att = null; show(); },
     };
     return api;
   };
@@ -257,17 +270,20 @@
     return `<div class="att-view ${k}" data-att="${N.esc(a.id)}" data-mime="${N.esc(a.mime || "")}" data-name="${N.esc(a.name || "")}">${inner}</div>`;
   };
   const attCache = new Map();
-  const fetchAtt = async (id, mime, auth) => {
-    let url = attCache.get(id);
-    if (url) return url;
+  const fetchRaw = async (id, mime, auth) => {
+    let hit = attCache.get(id);
+    if (hit) return hit;
     const r = await N.api("file", Object.assign({ id }, auth));
     if (!r.ok) throw new Error(r.message || "Could not load");
     const bin = atob(r.data), u8 = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    url = URL.createObjectURL(new Blob([u8], { type: r.mime || mime }));
-    attCache.set(id, url);
-    return url;
+    hit = { b64: r.data, mime: r.mime || mime, url: URL.createObjectURL(new Blob([u8], { type: r.mime || mime })) };
+    attCache.set(id, hit);
+    return hit;
   };
+  const fetchAtt = async (id, mime, auth) => (await fetchRaw(id, mime, auth)).url;
+  /* Android app: files are saved through the app (a web download can't leave the app) */
+  const inApp = () => !!(window.NuqtaApp && window.NuqtaApp.saveFile);
   N.loadAttachments = (root, auth) => N.$$("[data-att]:not([data-done])", root).forEach(async (el) => {
     el.dataset.done = "1";
     const id = el.dataset.att;
@@ -277,8 +293,9 @@
         if (b.disabled) return;
         b.disabled = true; small.textContent = "Downloading…";
         try {
-          const url = await fetchAtt(id, el.dataset.mime, auth), a = document.createElement("a");
-          a.href = url; a.download = el.dataset.name || "file"; document.body.appendChild(a); a.click(); a.remove();
+          const f = await fetchRaw(id, el.dataset.mime, auth);
+          if (inApp()) { if (!window.NuqtaApp.saveFile(f.b64, el.dataset.name || "file", f.mime)) throw new Error("save"); }
+          else { const a = document.createElement("a"); a.href = f.url; a.download = el.dataset.name || "file"; document.body.appendChild(a); a.click(); a.remove(); }
           small.textContent = label;
         } catch (e) { small.textContent = "Could not download. Try again."; }
         b.disabled = false;
@@ -289,6 +306,9 @@
       const url = await fetchAtt(id, el.dataset.mime, auth);
       el.innerHTML = el.classList.contains("voice") ? `<audio controls preload="metadata" src="${url}"></audio>`
         : `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Photo"></a>`;
+      if (inApp() && !el.classList.contains("voice")) N.$("a", el).addEventListener("click", async (e) => {   // in the app: save the photo
+        e.preventDefault(); const f = await fetchRaw(id, el.dataset.mime, auth); window.NuqtaApp.saveFile(f.b64, "photo-" + id.slice(-6) + ".jpg", f.mime);
+      });
     } catch (e) { el.classList.add("err"); el.innerHTML = (el.classList.contains("voice") ? "Voice note" : "Photo") + " could not be loaded"; }
   });
 

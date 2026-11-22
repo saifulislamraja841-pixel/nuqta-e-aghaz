@@ -28,7 +28,7 @@ window.NUQTA_CONFIG = {
   /* Mobile app (installable web app). Share www.nuqtaeaghaz.org/install.html on WhatsApp.
      apkUrl → optional Android APK file (e.g. built free at pwabuilder.com), e.g. "/downloads/nuqta.apk".
               Leave "" to only offer the normal install (works on Android and iPhone). */
-  app: { apkUrl: "" },
+  app: { apkUrl: "/downloads/nuqta-e-aghaz.apk" },
 
   /* Google Apps Script Web App URL (ends with /exec).
      Leave empty "" to run the dashboard & portal on DEMO data. */

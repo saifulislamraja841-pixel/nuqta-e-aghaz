@@ -90,6 +90,29 @@ function onAmbassadorRow() {
   CacheService.getScriptCache().removeAll(["stats", "rows_ambassador"]);
 }
 
+/* Google's cache holds at most 100 KB per item, so bigger results are stored in pieces.
+   Without this, large results were never cached and every dashboard load recalculated everything. */
+function bigPut_(key, str, ttl) {
+  const cache = CacheService.getScriptCache(), size = 90000;
+  try {
+    if (str.length <= size) { cache.put(key, str, ttl); return; }
+    const parts = {}, n = Math.ceil(str.length / size);
+    if (n > 40) return;                                    // over ~3.6 MB: don't cache
+    for (let i = 0; i < n; i++) parts[key + "#" + i] = str.slice(i * size, (i + 1) * size);
+    cache.putAll(parts, ttl);
+    cache.put(key, "#parts:" + n, ttl);
+  } catch (e) { Logger.log("Cache " + key + ": " + e); }
+}
+function bigGet_(key) {
+  const cache = CacheService.getScriptCache(), v = cache.get(key);
+  if (!v || v.indexOf("#parts:") !== 0) return v;
+  const n = Number(v.slice(7)), keys = [];
+  for (let i = 0; i < n; i++) keys.push(key + "#" + i);
+  const got = cache.getAll(keys);
+  if (keys.some(k => got[k] == null)) return null;           // a piece expired: recalculate
+  return keys.map(k => got[k]).join("");
+}
+
 /* Reads every form once and keeps the results ready, so the dashboard and portal open instantly.
    setup() runs this every 5 minutes; it also runs after each form submission. */
 const CACHE_SECONDS = 6 * 3600;
@@ -101,6 +124,7 @@ function refreshAll() {
   cache.removeAll(["stats"].concat(Object.keys(TABS).map(k => "rows_" + k)));
   Object.keys(TABS).forEach(k => readTab_(k));
   stats_();
+  try { cache.remove("activity"); activity_(); } catch (e) { Logger.log("Activity: " + e); }   // keep the dashboard's login data ready
 }
 
 /* Run this ONCE by hand to email every existing ambassador their reference number,
@@ -366,12 +390,12 @@ function readForm_(key) {
 }
 /* Rows for one form, with ambassador codes attached; cached for 2 minutes */
 function readTab_(key) {
-  const cache = CacheService.getScriptCache(), hit = cache.get("rows_" + key);
+  const cache = CacheService.getScriptCache(), hit = bigGet_("rows_" + key);
   let rows;
   if (hit) rows = JSON.parse(hit).map(r => (r.ts = new Date(r.ts), r));
   else {
     rows = readForm_(key);
-    try { cache.put("rows_" + key, JSON.stringify(rows), CACHE_SECONDS); } catch (e) { /* too big to cache */ }
+    bigPut_("rows_" + key, JSON.stringify(rows), CACHE_SECONDS);
   }
   if (key === "ambassador") {
     const byEmail = {}; ambRows_().forEach(c => (byEmail[c.email] = c));
@@ -384,7 +408,7 @@ function dayKey_(d) { return Utilities.formatDate(d, "Asia/Karachi", "yyyy-MM-dd
 
 /* -------------------- STATS (dashboard) -------------------- */
 function stats_() {
-  const cache = CacheService.getScriptCache(), hit = cache.get("stats");
+  const cache = CacheService.getScriptCache(), hit = bigGet_("stats");
   if (hit) return JSON.parse(hit);
   const D = {}; Object.keys(TABS).forEach(k => (D[k] = readTab_(k)));
   const mainEmails = new Set(D.main.map(r => r.email).filter(Boolean));
@@ -427,7 +451,7 @@ function stats_() {
     universities: Object.keys(uniCount).map(n => ({ name: n, count: uniCount[n] })).sort((a, b) => b.count - a.count).slice(0, 12),
     timeline, leaderboard, recent: recent.slice(0, 12), invalidRefs: invalid, announcements: readAnn_(),
   };
-  try { cache.put("stats", JSON.stringify(out), CACHE_SECONDS); } catch (e) { /* too big to cache */ }
+  bigPut_("stats", JSON.stringify(out), CACHE_SECONDS);
   return out;
 }
 
@@ -601,11 +625,11 @@ function logActivity_(email, event) {
   const cache = CacheService.getScriptCache(), k = "seen_" + email;
   if (event === "visit" && cache.get(k)) return;
   cache.put(k, "1", 1800);
-  try { logSheet_().appendRow([new Date(), email, event]); cache.remove("activity"); } catch (e) { Logger.log("Activity log: " + e); }
+  try { logSheet_().appendRow([new Date(), email, event]); if (event === "login") cache.remove("activity"); } catch (e) { Logger.log("Activity log: " + e); }
 }
 /* Everyone who has a portal account (ambassadors + participants), with their login history */
 function activity_() {
-  const cache = CacheService.getScriptCache(), hit = cache.get("activity");
+  const cache = CacheService.getScriptCache(), hit = bigGet_("activity");
   if (hit) return JSON.parse(hit);
   const people = {};
   const add = (email, name, type, extra) => {
@@ -656,7 +680,7 @@ function activity_() {
       remindedVia: rem[p.email] ? rem[p.email].via : "", emailSent: !!p.emailSent }))
       .sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || "") || a.name.localeCompare(b.name)),
   };
-  try { cache.put("activity", JSON.stringify(out), 120); } catch (e) { /* too big to cache */ }
+  bigPut_("activity", JSON.stringify(out), 600);
   return out;
 }
 

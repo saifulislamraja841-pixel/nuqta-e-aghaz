@@ -11,18 +11,20 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261122a"><link rel="stylesheet" href="assets/app.css?v=20261122a"><link rel="stylesheet" href="assets/mobile.css?v=20261122a">
+<link rel="stylesheet" href="assets/style.css?v=20261122b"><link rel="stylesheet" href="assets/app.css?v=20261122b"><link rel="stylesheet" href="assets/mobile.css?v=20261122b">
 </head>
 <body class="app">
 <div class="aurora"></div><div class="grain"></div>
 
 <!-- LOGIN -->
 <section class="login" id="login">
-  <form class="login-box" id="loginForm">
+  <form class="login-box" id="loginForm" method="post" action="dashboard.html">
     <img src="assets/logo-full.png" alt="Nuqta-e-Aghaz">
     <h2>Team Dashboard</h2>
     <p class="s">Organisers only. Enter the admin key set in your Apps Script.</p>
-    <div class="field"><label for="key">Admin key</label><input class="input" id="key" type="password" autocomplete="current-password" required></div>
+    <input type="text" name="username" autocomplete="username" value="Nuqta team dashboard" hidden>
+    <div class="field"><label for="key">Admin key</label><input class="input" id="key" name="password" type="password" autocomplete="current-password" required></div>
+    <label class="keep"><input type="checkbox" id="keep" checked> Keep me signed in on this device</label>
     <button class="btn btn-primary btn-block" type="submit">Open dashboard</button>
     <div class="err" id="loginErr"></div>
     <p class="hint" id="loginHint"></p>
@@ -128,32 +130,51 @@
   </main>
 </div>
 
-<script src="config.js?v=20261122a"></script>
-<script src="assets/core.js?v=20261122a"></script>
+<script src="config.js?v=20261122b"></script>
+<script src="assets/core.js?v=20261122b"></script>
 <script>
 (function(){
-  const N = Nuqta; let KEY = N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
+  const N = Nuqta; let KEY = N.store.get("nuqta_admin") || N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
+  /* Last data seen on this device, so the dashboard opens instantly and refreshes in the background */
+  const CACHE = "nuqta_dash_cache";
+  const cacheGet = k => { const c = N.store.get(CACHE); return c && c.key === KEY.slice(-6) ? c[k] : null; };
+  const cacheSet = (k, v) => { try { const c = N.store.get(CACHE) || {}; if (c.key !== KEY.slice(-6)) { for (const x in c) delete c[x]; } c.key = KEY.slice(-6); c[k] = v; N.store.set(CACHE, c); } catch(e){} };
+  const signOut = () => { N.store.del("nuqta_admin"); N.session.del("nuqta_admin"); N.store.del(CACHE); };
   N.hydrateIcons();
   N.$("#loginHint").textContent = N.isDemo() ? "Demo mode: no backend connected yet, so any key opens sample data." : "";
 
   async function load(){
-    DATA = await N.api("stats", { key: KEY });
-    render();
+    const d = await N.api("stats", { key: KEY });
+    DATA = d; render(); cacheSet("stats", d);
     loadMessages().catch(()=>{});
   }
   N.$("#loginForm").addEventListener("submit", async e=>{
     e.preventDefault(); KEY = N.$("#key").value.trim(); N.$("#loginErr").textContent = "";
     const btn = e.target.querySelector("button"), label = btn.textContent;
     btn.disabled = true; btn.textContent = "Loading live data…";
-    try { await load(); N.session.set("nuqta_admin", KEY); enter(); }
+    try {
+      await load();
+      if (N.$("#keep").checked) N.store.set("nuqta_admin", KEY); else N.session.set("nuqta_admin", KEY);
+      try { if (window.PasswordCredential) navigator.credentials.store(new PasswordCredential({ id: "Nuqta team dashboard", password: KEY, name: "Nuqta team dashboard" })).catch(()=>{}); } catch(e){}
+      enter();
+    }
     catch(err){ N.$("#loginErr").textContent = /key/i.test(err.message) ? "That key is not correct." : "Could not reach the backend: " + err.message; }
     finally { btn.disabled = false; btn.textContent = label; }
   });
   function enter(){ N.$("#login").hidden = true; N.$("#app").hidden = false; N.$("#demoBanner").hidden = !DATA.demo; }
-  N.$("#logout").addEventListener("click", ()=>{ N.session.del("nuqta_admin"); location.reload(); });
+  N.$("#logout").addEventListener("click", ()=>{ signOut(); location.reload(); });
   N.$("#refresh").addEventListener("click", ()=>load().then(()=>N.toast("Updated")));
   setInterval(()=>{ if (KEY && !document.hidden) load().catch(()=>{}); }, 60000);
-  if (KEY) load().then(enter).catch(()=>N.session.del("nuqta_admin"));
+  if (KEY) setTimeout(()=>{                                     // after the whole script has run
+    const cached = cacheGet("stats");
+    if (cached) { DATA = cached; render(); enter(); }               // instant: last data from this device
+    if (cacheGet("msgs")) { MSGS = cacheGet("msgs"); renderMsgs(); }
+    load().then(enter).catch(err=>{
+      if (/key/i.test(err.message)) { signOut(); location.reload(); }   // key changed: sign in again
+      else if (cached) N.toast("Showing saved data. Could not refresh: " + err.message);
+      else N.$("#loginErr").textContent = "Could not reach the backend: " + err.message;
+    });
+  }, 0);
 
   N.$$(".side a.tab[data-view]").forEach(t=>t.addEventListener("click", ()=>{
     N.$$(".side a.tab").forEach(x=>x.classList.remove("active")); t.classList.add("active");
@@ -276,7 +297,7 @@
 
   /* ---------- messages inbox ---------- */
   let MSGS = [], msgF = "Open";
-  async function loadMessages(){ const r = await N.api("messages", { key: KEY }); MSGS = r.messages || []; renderMsgs(); }
+  async function loadMessages(){ const r = await N.api("messages", { key: KEY }); MSGS = r.messages || []; renderMsgs(); cacheSet("msgs", MSGS); }
   const mBadge = s => s === "Answered" ? '<span class="badge ok">Answered</span>' : s === "Closed" ? '<span class="badge">Closed</span>' : '<span class="badge gold">Waiting</span>';
   function renderMsgs(){
     const open = MSGS.filter(m=>m.status !== "Answered" && m.status !== "Closed");
@@ -302,7 +323,7 @@
         </div>
       </div></div>`).join("") || `<div class="empty">${msgF === "Open" ? "All caught up. No messages are waiting." : "No messages here."}</div>`;
     REPLY_ATT.clear();
-    N.$$("#msgList .msg").forEach(box=>{ const slot = N.$(".att-slot", box); if (slot) REPLY_ATT.set(box.dataset.id, N.attacher(slot)); });
+    N.$$("#msgList .msg").forEach(box=>{ const slot = N.$(".att-slot", box); if (slot) REPLY_ATT.set(box.dataset.id, N.attacher(slot, { onSend: ()=>{ const b = N.$('[data-act="reply"]', box); if (b) b.click(); } })); });
     N.loadAttachments(N.$("#msgList"), { key: KEY });
   }
   const REPLY_ATT = new Map();
@@ -325,8 +346,9 @@
   /* ---------- portal activity ---------- */
   let ACT = null, actF = "all", actG = "all";
   async function loadActivity(force){
+    if (!ACT && cacheGet("act")) { ACT = cacheGet("act"); renderActivity(); force = true; }   // show saved, then refresh
     if (ACT && !force) return renderActivity();
-    try { ACT = await N.api("activity", { key: KEY }); renderActivity(); }
+    try { ACT = await N.api("activity", { key: KEY }); renderActivity(); cacheSet("act", ACT); }
     catch(err){ N.$("#actBody").innerHTML = `<div class="panel empty">Could not load portal activity: ${N.esc(err.message)}</div>`; }
   }
   const fmtWhen = s => s ? new Date(s).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
