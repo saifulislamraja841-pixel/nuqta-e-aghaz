@@ -844,14 +844,29 @@ function attachFolder_() {
 }
 /* Run this once from the editor: it asks Google for permission to save files in Drive. */
 function authorizeAttachments() { Logger.log("Attachments folder: " + attachFolder_().getUrl()); }
-/* a = { kind: "image" | "voice", mime, name, data (base64), duration }. Returns the stored description or throws. */
+/* Documents that can be attached, by extension */
+const DOC_TYPES = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain", csv: "text/csv", zip: "application/zip", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+/* a = { kind: "image" | "voice" | "file", mime, name, data (base64), duration }. Returns the stored description or throws. */
 function saveAttachment_(a, who) {
   if (!a || !a.data) return null;
-  const kind = a.kind === "voice" ? "voice" : "image", mime = String(a.mime || "").split(";")[0].toLowerCase();
+  const kind = a.kind === "voice" ? "voice" : a.kind === "file" ? "file" : "image";
+  let mime = String(a.mime || "").split(";")[0].toLowerCase();
   if (kind === "image" && !/^image\/(jpeg|png|webp|gif)$/.test(mime)) throw new Error("Only photos (JPG, PNG, WEBP) can be sent.");
   if (kind === "voice" && !/^audio\/(webm|mp4|mpeg|ogg|aac|x-m4a|wav)$/.test(mime)) throw new Error("This voice note format isn't supported.");
   const bytes = Utilities.base64Decode(String(a.data).replace(/^data:[^,]*,/, ""));
   if (bytes.length > ATTACH_MAX_BYTES) throw new Error("The file is too large (6 MB at most).");
+  if (kind === "file") {                               // documents keep their own (cleaned-up) name
+    const orig = String(a.name || "file").replace(/[\\/:*?"<>|\x00-\x1f]+/g, "_").replace(/^\.+/, "").slice(-120) || "file";
+    const ext = ((orig.match(/\.([a-z0-9]+)$/i) || [])[1] || "").toLowerCase();
+    if (!DOC_TYPES[ext]) throw new Error("You can attach PDF, Word, Excel, PowerPoint, text, CSV, ZIP or image files.");
+    mime = DOC_TYPES[ext];
+    const stamp = Utilities.formatDate(new Date(), "Asia/Karachi", "yyyyMMdd-HHmmss");
+    const f = attachFolder_().createFile(Utilities.newBlob(bytes, mime, stamp + "_" + String(who || "").replace(/[^a-z0-9]+/gi, "-").slice(0, 40) + "_" + orig));
+    return { id: f.getId(), kind, mime, size: bytes.length, name: orig };
+  }
   const ext = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "audio/webm": "webm", "audio/mp4": "m4a", "audio/x-m4a": "m4a",
     "audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/aac": "aac", "audio/wav": "wav" }[mime] || "bin";
   const name = (kind === "voice" ? "voice" : "photo") + "_" + String(who || "").replace(/[^a-z0-9]+/gi, "-").slice(0, 40) + "_" +
@@ -867,8 +882,8 @@ function getAttachment_(id, token, key) {
   if (!admin && !email) return { ok: false, expired: !!token, message: "Please sign in again." };
   const m = readMessages_().find(x => (x.attachment && x.attachment.id === id) || (x.replyAttachment && x.replyAttachment.id === id));
   if (!m || (!admin && m.email !== email)) return { ok: false, message: "File not found." };
-  const blob = DriveApp.getFileById(id).getBlob();
-  return { ok: true, mime: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) };
+  const blob = DriveApp.getFileById(id).getBlob(), att = (m.attachment && m.attachment.id === id) ? m.attachment : m.replyAttachment;
+  return { ok: true, mime: (att && att.mime) || blob.getContentType(), name: (att && att.name) || "", data: Utilities.base64Encode(blob.getBytes()) };
 }
 function readMessages_() {
   const iso = v => v instanceof Date ? v.toISOString() : String(v || "");
@@ -883,7 +898,7 @@ function sendMessage_(token, topic, message, attachment) {
   if (!email) return { ok: false, expired: true, message: "Please sign in again." };
   message = String(message || "").trim(); topic = String(topic || "General question").trim().slice(0, 60);
   const hasFile = !!(attachment && attachment.data);
-  if (!hasFile && message.length < 3) return { ok: false, message: "Please write your message, or add a photo or voice note." };
+  if (!hasFile && message.length < 3) return { ok: false, message: "Please write your message, or add a photo, voice note or file." };
   if (message.length > 2000) return { ok: false, message: "Please keep your message under 2,000 characters." };
   const cache = CacheService.getScriptCache(), rk = "msgs_" + email, n = Number(cache.get(rk) || 0);
   if (n >= 5) return { ok: false, message: "You've sent several messages in the last hour. Please wait for our reply." };
@@ -894,7 +909,7 @@ function sendMessage_(token, topic, message, attachment) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try { msgSheet_().appendRow(["M" + Date.now(), new Date(), email, acct.name || "", topic, message, "Open", "", "", att ? JSON.stringify(att) : "", ""]); }
   finally { lock.releaseLock(); }
-  const extra = att ? (att.kind === "voice" ? "🎤 Voice note" + (att.duration ? " (" + att.duration + "s)" : "") : "📷 Photo") + " attached" : "";
+  const extra = att ? (att.kind === "voice" ? "🎤 Voice note" + (att.duration ? " (" + att.duration + "s)" : "") : att.kind === "file" ? "📎 File: " + att.name : "📷 Photo") + " attached" : "";
   whatsAppAlert_("📩 New portal message — Nuqta-e-Aghaz\n" + (acct.name || email) + (acct.code ? " (" + acct.code + ")" : "") +
     "\nTopic: " + topic + "\n\n" + message.slice(0, 600) + (message.length > 600 ? "…" : "") + (extra ? (message ? "\n" : "") + extra : "") + "\n\nReply: " + SITE_URL + "dashboard.html");
   return { ok: true, messages: readMessages_().filter(m => m.email === email) };

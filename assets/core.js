@@ -70,6 +70,7 @@
     grid: '<rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/>',
     image: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    clip: '<path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6"/>',
     key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',
     stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
@@ -179,24 +180,41 @@
     img.src = url;
   });
   const fmtDur = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+  /* Documents people can attach (6 MB at most) */
+  const FILE_TYPES = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    txt: "text/plain", csv: "text/csv", zip: "application/zip", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+  const FILE_MAX = 6 * 1024 * 1024;
+  const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
   N.attacher = (el, { maxVoice = 120 } = {}) => {
     let att = null, rec = null, timer = null, started = 0, stream = null;
     el.classList.add("attacher");
     el.innerHTML = `<div class="att-btns"><label class="btn btn-ghost btn-sm att-photo">${N.icon("image")}Photo<input type="file" accept="image/*" hidden></label>
-      <button type="button" class="btn btn-ghost btn-sm att-voice">${N.icon("mic")}Voice note</button></div><div class="att-prev"></div>`;
-    const prev = N.$(".att-prev", el), vbtn = N.$(".att-voice", el), file = N.$("input[type=file]", el);
+      <button type="button" class="btn btn-ghost btn-sm att-voice">${N.icon("mic")}Voice note</button>
+      <label class="btn btn-ghost btn-sm att-file">${N.icon("clip")}File<input type="file" accept="${Object.keys(FILE_TYPES).map((x) => "." + x).join(",")}" hidden></label></div><div class="att-prev"></div>`;
+    const prev = N.$(".att-prev", el), vbtn = N.$(".att-voice", el), photo = N.$(".att-photo input", el), doc = N.$(".att-file input", el);
     const show = () => {
       if (!att) { prev.innerHTML = ""; el.classList.remove("has"); return; }
       el.classList.add("has");
       const src = att.url;
-      prev.innerHTML = `<div class="att-chip">${att.kind === "image" ? `<img src="${src}" alt="Photo to send">` : `<audio controls preload="metadata" src="${src}"></audio><span class="dur">${fmtDur(att.duration)}</span>`}
+      prev.innerHTML = `<div class="att-chip">${att.kind === "image" ? `<img src="${src}" alt="Photo to send">`
+        : att.kind === "voice" ? `<audio controls preload="metadata" src="${src}"></audio><span class="dur">${fmtDur(att.duration)}</span>`
+        : `<span class="file-ic">${N.icon("clip")}</span><span class="fname">${N.esc(att.name)}<small>${fmtSize(att.blob.size)}</small></span>`}
         <button type="button" class="icon-btn" title="Remove" aria-label="Remove">${N.icon("x")}</button></div>`;
       N.$(".icon-btn", prev).addEventListener("click", () => api.clear());
     };
-    file.addEventListener("change", async () => {
-      const f = file.files[0]; file.value = ""; if (!f) return;
+    photo.addEventListener("change", async () => {
+      const f = photo.files[0]; photo.value = ""; if (!f) return;
       try { const b = await shrinkImage(f); api.clear(); att = { kind: "image", mime: "image/jpeg", blob: b, url: URL.createObjectURL(b), duration: 0 }; show(); }
       catch (e) { N.toast(e.message); }
+    });
+    doc.addEventListener("change", () => {
+      const f = doc.files[0]; doc.value = ""; if (!f) return;
+      const ext = (f.name.match(/\.([a-z0-9]+)$/i) || [])[1];
+      if (!ext || !FILE_TYPES[ext.toLowerCase()]) return N.toast("You can attach PDF, Word, Excel, PowerPoint, text, CSV, ZIP or image files.");
+      if (f.size > FILE_MAX) return N.toast("That file is " + fmtSize(f.size) + ". Files can be 6 MB at most.");
+      api.clear(); att = { kind: "file", mime: FILE_TYPES[ext.toLowerCase()], blob: f, name: f.name, url: "", duration: 0 }; show();
     });
     const stopRec = () => { if (rec && rec.state !== "inactive") rec.stop(); };
     vbtn.addEventListener("click", async () => {
@@ -221,30 +239,54 @@
       tick(); timer = setInterval(tick, 250);
     });
     const api = {
-      async get() { stopRec(); if (!att) return null; return { kind: att.kind, mime: att.mime, duration: att.duration, data: await blobToB64(att.blob) }; },
+      async get() { stopRec(); if (!att) return null; return { kind: att.kind, mime: att.mime, duration: att.duration, name: att.name || "", data: await blobToB64(att.blob) }; },
       has: () => !!att,
       recording: () => !!(rec && rec.state === "recording"),
       clear() { if (att && att.url) URL.revokeObjectURL(att.url); att = null; show(); },
     };
     return api;
   };
-  /* A placeholder for a sent attachment; N.loadAttachments fills it in */
-  N.attHtml = (a) => !a ? "" : `<div class="att-view ${a.kind === "voice" ? "voice" : "image"}" data-att="${N.esc(a.id)}" data-mime="${N.esc(a.mime || "")}">
-    ${a.kind === "voice" ? `${N.icon("mic")}<span>Voice note${a.duration ? " · " + fmtDur(a.duration) : ""}</span><span class="spinner sm"></span>` : `<span class="spinner sm"></span>`}</div>`;
+  /* A placeholder for a sent attachment; N.loadAttachments fills it in.
+     Photos and voice notes load straight away; documents download when tapped. */
+  N.attHtml = (a) => {
+    if (!a) return "";
+    const k = a.kind === "voice" ? "voice" : a.kind === "file" ? "file" : "image";
+    const inner = k === "voice" ? `${N.icon("mic")}<span>Voice note${a.duration ? " · " + fmtDur(a.duration) : ""}</span><span class="spinner sm"></span>`
+      : k === "file" ? `<button type="button" class="file-dl"><span class="file-ic">${N.icon("clip")}</span><span class="fname">${N.esc(a.name || "File")}<small>${a.size ? fmtSize(a.size) + " · " : ""}Tap to download</small></span>${N.icon("download")}</button>`
+      : `<span class="spinner sm"></span>`;
+    return `<div class="att-view ${k}" data-att="${N.esc(a.id)}" data-mime="${N.esc(a.mime || "")}" data-name="${N.esc(a.name || "")}">${inner}</div>`;
+  };
   const attCache = new Map();
+  const fetchAtt = async (id, mime, auth) => {
+    let url = attCache.get(id);
+    if (url) return url;
+    const r = await N.api("file", Object.assign({ id }, auth));
+    if (!r.ok) throw new Error(r.message || "Could not load");
+    const bin = atob(r.data), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    url = URL.createObjectURL(new Blob([u8], { type: r.mime || mime }));
+    attCache.set(id, url);
+    return url;
+  };
   N.loadAttachments = (root, auth) => N.$$("[data-att]:not([data-done])", root).forEach(async (el) => {
     el.dataset.done = "1";
     const id = el.dataset.att;
+    if (el.classList.contains("file")) {
+      const b = N.$(".file-dl", el), small = N.$("small", el), label = small.textContent;
+      b.addEventListener("click", async () => {
+        if (b.disabled) return;
+        b.disabled = true; small.textContent = "Downloading…";
+        try {
+          const url = await fetchAtt(id, el.dataset.mime, auth), a = document.createElement("a");
+          a.href = url; a.download = el.dataset.name || "file"; document.body.appendChild(a); a.click(); a.remove();
+          small.textContent = label;
+        } catch (e) { small.textContent = "Could not download. Try again."; }
+        b.disabled = false;
+      });
+      return;
+    }
     try {
-      let url = attCache.get(id);
-      if (!url) {
-        const r = await N.api("file", Object.assign({ id }, auth));
-        if (!r.ok) throw new Error(r.message || "Could not load");
-        const bin = atob(r.data), u8 = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-        url = URL.createObjectURL(new Blob([u8], { type: r.mime || el.dataset.mime }));
-        attCache.set(id, url);
-      }
+      const url = await fetchAtt(id, el.dataset.mime, auth);
       el.innerHTML = el.classList.contains("voice") ? `<audio controls preload="metadata" src="${url}"></audio>`
         : `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Photo"></a>`;
     } catch (e) { el.classList.add("err"); el.innerHTML = (el.classList.contains("voice") ? "Voice note" : "Photo") + " could not be loaded"; }
@@ -360,7 +402,7 @@
     return { demo: true };
   };
   const demoFiles = {};
-  const demoAtt = (a) => { if (!a || !a.data) return null; const id = "f" + Date.now() + Math.floor(rnd() * 1e4); demoFiles[id] = { mime: a.mime, data: a.data }; return { id, kind: a.kind, mime: a.mime, duration: a.duration || 0 }; };
+  const demoAtt = (a) => { if (!a || !a.data) return null; const id = "f" + Date.now() + Math.floor(rnd() * 1e4); demoFiles[id] = { mime: a.mime, data: a.data }; return { id, kind: a.kind, mime: a.mime, duration: a.duration || 0, name: a.name || "", size: Math.round(a.data.length * 0.75) }; };
   N.demoPost = async (p) => {
     await new Promise((r) => setTimeout(r, 300));
     if (p.action === "resetRequest") return String(p.user || "").trim() ? { ok: true, demo: true, sentTo: "st•••@demo.pk" } : { ok: false, message: "Enter your username." };
@@ -383,7 +425,7 @@
     if (p.action === "sendMessage") {
       const email = String(p.token || "").replace(/^demo:/, "").toLowerCase();
       const d = await N.demo("portal", { email });
-      if (!String(p.message || "").trim() && !(p.attachment && p.attachment.data)) return { ok: false, message: "Please write your message, or add a photo or voice note." };
+      if (!String(p.message || "").trim() && !(p.attachment && p.attachment.data)) return { ok: false, message: "Please write your message, or add a photo, voice note or file." };
       const list = [{ id: "d" + Date.now(), ts: new Date().toISOString(), email: /amb/.test(email) || !/student|guest/.test(email) ? "ambassador@demo.pk" : "student@demo.pk",
         name: d.profile.name, topic: p.topic, message: p.message, status: "Open", reply: "", repliedAt: "", attachment: demoAtt(p.attachment) }, ...demoMessages()];
       N.store.set("nuqta_demo_msg", list);

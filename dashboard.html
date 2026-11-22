@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261120s"><link rel="stylesheet" href="assets/app.css?v=20261120s"><link rel="stylesheet" href="assets/mobile.css?v=20261120s">
+<link rel="stylesheet" href="assets/style.css?v=20261122a"><link rel="stylesheet" href="assets/app.css?v=20261122a"><link rel="stylesheet" href="assets/mobile.css?v=20261122a">
 </head>
 <body class="app">
 <div class="aurora"></div><div class="grain"></div>
@@ -128,8 +128,8 @@
   </main>
 </div>
 
-<script src="config.js?v=20261120s"></script>
-<script src="assets/core.js?v=20261120s"></script>
+<script src="config.js?v=20261122a"></script>
+<script src="assets/core.js?v=20261122a"></script>
 <script>
 (function(){
   const N = Nuqta; let KEY = N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
@@ -312,7 +312,7 @@
     const payload = act === "reply" ? { action:"replyMessage", key:KEY, id, reply: N.$("textarea", box).value.trim() } : { action:"messageStatus", key:KEY, id, status: act };
     const att = REPLY_ATT.get(id);
     if (act === "reply" && att && att.recording()) return N.toast("Stop the recording first, then send.");
-    if (act === "reply" && !payload.reply && !(att && att.has())) return N.toast("Write a reply, or add a photo or voice note");
+    if (act === "reply" && !payload.reply && !(att && att.has())) return N.toast("Write a reply, or add a photo, voice note or file");
     b.disabled = true; const label = b.innerHTML;
     try { if (act === "reply" && att && att.has()) { b.textContent = "Uploading…"; payload.attachment = await att.get(); }
       const r = await N.post(payload); MSGS = r.messages; renderMsgs(); N.toast(act === "reply" ? "Reply sent" : act === "Closed" ? "Closed" : "Reopened"); }

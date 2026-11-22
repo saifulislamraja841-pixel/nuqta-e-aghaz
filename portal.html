@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261120s"><link rel="stylesheet" href="assets/app.css?v=20261120s"><link rel="stylesheet" href="assets/mobile.css?v=20261120s">
+<link rel="stylesheet" href="assets/style.css?v=20261122a"><link rel="stylesheet" href="assets/app.css?v=20261122a"><link rel="stylesheet" href="assets/mobile.css?v=20261122a">
 </head>
 <body class="app">
 <div class="aurora"></div><canvas id="dots"></canvas><div class="grain"></div>
@@ -73,17 +73,17 @@
 
   <div class="row r-1-2" id="contact">
     <form class="panel" id="msgForm">
-      <h3>Ask the team</h3><div class="sub">Send a question, a photo or a voice note. The team's reply will appear here in your portal.</div>
+      <h3>Ask the team</h3><div class="sub">Send a question, a photo, a voice note or a file (PDF, Word, Excel…). The team's reply will appear here in your portal.</div>
       <div class="field"><label for="mTopic">Topic</label><select class="select" id="mTopic">
         <option>General question</option><option>Registration / payment</option><option>Competitions</option><option>Talent Award</option>
         <option>Ambassador program</option><option>Event day</option><option>Other</option></select></div>
-      <div class="field"><label for="mText">Your message</label><textarea class="textarea" id="mText" maxlength="2000" placeholder="Write your question… (or send a photo / voice note)"></textarea>
+      <div class="field"><label for="mText">Your message</label><textarea class="textarea" id="mText" maxlength="2000" placeholder="Write your question… (or send a photo, voice note or file)"></textarea>
         <span class="count" id="mCount">0 / 2000</span></div>
       <div class="field" id="mAtt"></div>
       <button class="btn btn-primary btn-block" type="submit"><span data-icon="send"></span>Send message</button>
     </form>
     <div class="panel">
-      <div class="panel-head"><div><h3>Your messages</h3><div class="sub">Your messages, photos, voice notes and the team's replies</div></div><span class="badge" id="msgCount"></span></div>
+      <div class="panel-head"><div><h3>Your messages</h3><div class="sub">Your messages, photos, voice notes, files and the team's replies</div></div><span class="badge" id="msgCount"></span></div>
       <div id="msgs"></div>
     </div>
   </div>
@@ -94,8 +94,8 @@
   </div>
 </div>
 
-<script src="config.js?v=20261120s"></script>
-<script src="assets/core.js?v=20261120s"></script>
+<script src="config.js?v=20261122a"></script>
+<script src="assets/core.js?v=20261122a"></script>
 <script>
 (function(){
   const N = Nuqta, C = N.C; let CRED = N.store.get("nuqta_portal") || N.session.get("nuqta_portal");   // stays signed in (token lasts 14 days)
@@ -259,7 +259,7 @@
     e.preventDefault();
     if (ATT.recording()) { N.toast("Stop the recording first, then send."); return; }
     const text = N.$("#mText").value.trim();
-    if (!text && !ATT.has()) { N.toast("Write a message, or add a photo or voice note."); N.$("#mText").focus(); return; }
+    if (!text && !ATT.has()) { N.toast("Write a message, or add a photo, voice note or file."); N.$("#mText").focus(); return; }
     const b = N.$("#msgForm button[type=submit]"), label = b.innerHTML; b.disabled = true; b.textContent = ATT.has() ? "Uploading…" : "Sending…";
     try {
       const attachment = await ATT.get();
