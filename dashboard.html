@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Nuqta">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261123b"><link rel="stylesheet" href="assets/app.css?v=20261123b"><link rel="stylesheet" href="assets/mobile.css?v=20261123b">
+<link rel="stylesheet" href="assets/style.css?v=20261123c"><link rel="stylesheet" href="assets/app.css?v=20261123c"><link rel="stylesheet" href="assets/mobile.css?v=20261123c">
 </head>
 <body class="app">
 <div class="aurora"></div><div class="grain"></div>
@@ -130,8 +130,8 @@
   </main>
 </div>
 
-<script src="config.js?v=20261123b"></script>
-<script src="assets/core.js?v=20261123b"></script>
+<script src="config.js?v=20261123c"></script>
+<script src="assets/core.js?v=20261123c"></script>
 <script>
 (function(){
   const N = Nuqta; let KEY = N.store.get("nuqta_admin") || N.session.get("nuqta_admin") || "", DATA = null, series = "main", sortKey = "total", sortDir = -1;
@@ -364,6 +364,7 @@
         <div class="panel"><h3>People active in the portal per day</h3><div class="sub">Last 14 days · unique people who signed in or opened the portal · hover a bar</div><div class="chart" id="actChart"></div></div>
         <div class="panel"><h3>Logged in, by group</h3><div class="sub">Share of each group that has opened the portal at least once</div><div class="funnel" id="actGroups"></div></div>
       </div>
+      <div class="panel"><h3>Signed in from</h3><div class="sub" id="actViaSub">Website or app · each person counted once per place they used</div><div class="funnel via-list" id="actVia"></div></div>
       <div class="panel">
         <div class="mailbar" id="actMail"></div>
         <div class="panel-head"><div><h3>Login emails, logins &amp; reminders</h3><div class="sub" id="actCount"></div></div>
@@ -381,7 +382,13 @@
     N.$("#actSearch").addEventListener("input", renderPeople);
     const rows = [["Ambassadors", G.ambassadors], ["Participants", G.participants]];
     N.$("#actGroups").innerHTML = rows.map(([n,v])=>`<div class="fn"><div class="top"><span>${n}</span><b>${N.fmt(v.loggedIn)} / ${N.fmt(v.total)} · ${pct(v.loggedIn,v.total)}%</b></div><div class="bar"><i data-w="${pct(v.loggedIn,v.total)}"></i></div></div>`).join("");
-    requestAnimationFrame(()=>N.$$("#actGroups i[data-w]").forEach(i=>i.style.width = i.dataset.w + "%"));
+    const V = ACT.via || {}, VN = [["app","Android app"],["home","Home-screen app (iPhone / Android)"],["phone","Website on a phone"],["computer","Website on a computer"]];
+    const vTot = VN.reduce((a,[k])=>a+((V[k]||{}).logins||0),0), vMax = Math.max(1, ...VN.map(([k])=>(V[k]||{}).people||0));
+    N.$("#actVia").innerHTML = VN.map(([k,n])=>{ const v = V[k] || {people:0,logins:0,visits:0};
+      return `<div class="fn"><div class="top"><span>${n}</span><b>${N.fmt(v.people)} ${v.people===1?"person":"people"} · ${N.fmt(v.logins)} sign-in${v.logins===1?"":"s"} · ${N.fmt(v.visits)} visit${v.visits===1?"":"s"}</b></div><div class="bar"><i data-w="${Math.round(v.people/vMax*100)}"></i></div></div>`; }).join("");
+    const un = V.unknown || {logins:0,visits:0,people:0};
+    N.$("#actViaSub").textContent = ACT.via ? (un.logins || un.visits ? `Tracking started 23 Nov · ${N.fmt(un.logins)} earlier sign-ins and ${N.fmt(un.visits)} visits weren't tagged` : "Each person counted once per place they used") : "Update the Apps Script backend to see this";
+    requestAnimationFrame(()=>N.$$("#actGroups i[data-w], #actVia i[data-w]").forEach(i=>i.style.width = i.dataset.w + "%"));
     drawBars(); renderPeople();
   }
   function drawBars(){

@@ -3,7 +3,7 @@
    - Styles, scripts, images: served from the saved copy and refreshed in the background.
    - Google (Apps Script, Forms) and other sites: never cached, always live.
    Change VERSION whenever you deploy big changes, to clear old saved copies. */
-const VERSION = "nuqta-app-20261123b";
+const VERSION = "nuqta-app-20261123c";
 const SHELL = [
   "/app.html", "/index.html", "/portal.html", "/install.html", "/offline.html",
   "/about.html", "/competitions.html", "/talent.html", "/ambassadors.html", "/stalls.html", "/sponsors.html", "/faq.html",

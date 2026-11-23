@@ -459,9 +459,9 @@ function stats_() {
 /* Sign-in. Ambassadors: reference number (or email) + the password we emailed them.
    Everyone else: email + last 4 digits of their phone number.
    Returns a signed token that the portal uses for 14 days. */
-function login_(user, pass) {
+function login_(user, pass, via) {
   const r = checkLogin_(user, pass);
-  if (r.ok && r.profile) { logActivity_(r.profile.email, "login"); const a = findAccount_(r.profile.email); r.username = (a && a.code) || r.profile.email; }
+  if (r.ok && r.profile) { logActivity_(r.profile.email, "login", via); const a = findAccount_(r.profile.email); r.username = (a && a.code) || r.profile.email; }
   return r;
 }
 function checkLogin_(user, pass) {
@@ -532,7 +532,7 @@ function resetRequest_(user) {
       "<br><br>Portal: <a href='" + SITE_URL + "portal.html'>" + SITE_URL + "portal.html</a><br><br>— Team Nuqta-e-Aghaz" });
   return { ok: true, sentTo: mask_(acct.email) };
 }
-function resetConfirm_(user, code, pass) {
+function resetConfirm_(user, code, pass, via) {
   const acct = findAccount_(user);
   if (!acct) return { ok: false, message: "We couldn't find that username." };
   const cache = CacheService.getScriptCache(), k = "reset_" + acct.email, saved = JSON.parse(cache.get(k) || "null");
@@ -547,7 +547,7 @@ function resetConfirm_(user, code, pass) {
   if (bad) return { ok: false, message: bad };
   if (!setPassword_(acct.email, String(pass))) return { ok: false, message: "We couldn't update your password. Please message us on WhatsApp." };
   cache.remove(k); cache.remove("resetn_" + acct.email);
-  logActivity_(acct.email, "login");
+  logActivity_(acct.email, "login", via);
   return Object.assign(portalWithToken_(acct.email), { username: acct.code || acct.email });
 }
 function changePassword_(token, pass) {
@@ -616,16 +616,20 @@ const LOG_TAB = "Portal Activity";
 function logSheet_() {
   const ss = SpreadsheetApp.getActive();
   let sh = ss.getSheetByName(LOG_TAB);
-  if (!sh) { sh = ss.insertSheet(LOG_TAB); sh.appendRow(["Timestamp", "Email", "Event"]); sh.setFrozenRows(1); sh.getRange(1, 1, 1, 3).setFontWeight("bold"); }
+  if (!sh) { sh = ss.insertSheet(LOG_TAB); sh.appendRow(["Timestamp", "Email", "Event", "Via"]); sh.setFrozenRows(1); sh.getRange(1, 1, 1, 4).setFontWeight("bold"); }
+  else if (sh.getRange(1, 4).getValue() !== "Via") sh.getRange(1, 4).setValue("Via").setFontWeight("bold");   // column added later
   return sh;
 }
-function logActivity_(email, event) {
+/* via: where it came from — app (Android app), home (home-screen web app), phone or computer (website) */
+const VIAS = ["app", "home", "phone", "computer"];
+function logActivity_(email, event, via) {
   email = String(email || "").trim().toLowerCase();
   if (!email) return;
   const cache = CacheService.getScriptCache(), k = "seen_" + email;
+  via = VIAS.indexOf(String(via || "")) >= 0 ? String(via) : "";
   if (event === "visit" && cache.get(k)) return;
   cache.put(k, "1", 1800);
-  try { logSheet_().appendRow([new Date(), email, event]); if (event === "login") cache.remove("activity"); } catch (e) { Logger.log("Activity log: " + e); }
+  try { logSheet_().appendRow([new Date(), email, event, via]); if (event === "login") cache.remove("activity"); } catch (e) { Logger.log("Activity log: " + e); }
 }
 /* Everyone who has a portal account (ambassadors + participants), with their login history */
 function activity_() {
@@ -646,6 +650,8 @@ function activity_() {
   partRows_().filter(p => !/skip|stop/.test(p.status)).forEach(p => add(p.email, p.name, "Participant", { forms: p.forms, sent: p.pass && p.sent }));
   const accounts = Object.keys(people).length;
   const log = logSheet_().getDataRange().getValues().slice(1).filter(r => r[1] && r[0] instanceof Date);
+  const via = {};
+  VIAS.concat("unknown").forEach(v => via[v] = { logins: 0, visits: 0, people: {} });
   log.forEach(r => {
     const em = String(r[1]).trim().toLowerCase(), t = r[0];
     if (!people[em]) add(em, "", "Other");
@@ -654,6 +660,11 @@ function activity_() {
     if (!p.lastSeen || t > p.lastSeen) p.lastSeen = t;
     if (String(r[2]) === "login") p.logins++; else p.visits++;
     p.days[dayKey_(t)] = 1;
+    const v = VIAS.indexOf(String(r[3] || "")) >= 0 ? String(r[3]) : "unknown";
+    const w = via[v];
+    if (String(r[2]) === "login") w.logins++; else w.visits++;
+    w.people[em] = 1;
+    if (v !== "unknown") { p.via = p.via || {}; p.via[v] = (p.via[v] || 0) + 1; if (!p.lastViaAt || t >= p.lastViaAt) { p.lastVia = v; p.lastViaAt = t; } }
   });
   const rem = reminded_();
   const now = Date.now(), list = Object.keys(people).map(k => people[k]);
@@ -672,7 +683,8 @@ function activity_() {
     mail: { quota: MailApp.getRemainingDailyQuota(), autoAmbassadors: SEND_AMBASSADOR_EMAIL, autoParticipants: SEND_PARTICIPANT_EMAIL },
     reminderRound: PropertiesService.getScriptProperties().getProperty("REMIND_ROUND") ? { group: PropertiesService.getScriptProperties().getProperty("REMIND_GROUP") || "all" } : null,
     daily,
-    people: list.map(p => ({ email: p.email, name: p.name, type: p.types.join(" + "), code: p.code, forms: p.forms,
+    via: Object.keys(via).reduce((o, v) => { o[v] = { logins: via[v].logins, visits: via[v].visits, people: Object.keys(via[v].people).length }; return o; }, {}),
+    people: list.map(p => ({ lastVia: p.lastVia || "", email: p.email, name: p.name, type: p.types.join(" + "), code: p.code, forms: p.forms,
       firstSeen: p.firstSeen ? p.firstSeen.toISOString() : "", lastSeen: p.lastSeen ? p.lastSeen.toISOString() : "",
       logins: p.logins, visits: p.visits, daysActive: Object.keys(p.days).length,
       activated: p.activated || p.logins > 0, activatedAt: p.activatedAt ? p.activatedAt.toISOString() : "",
@@ -1014,7 +1026,7 @@ function doGet(e) {
     if (p.action === "portal") {
       if (p.token) {
         const em = fromToken_(p.token);
-        if (em) logActivity_(em, "visit");
+        if (em) logActivity_(em, "visit", p.via);
         return json_(em ? portalData_(em) : { ok: false, expired: true, message: "Please sign in again." });
       }
       return json_(portal_(p.email, p.phone4));
@@ -1028,10 +1040,10 @@ function doGet(e) {
 function doPost(e) {
   try {
     const p = JSON.parse(e.postData.contents || "{}");
-    if (p.action === "login") return json_(login_(p.user, p.pass));
+    if (p.action === "login") return json_(login_(p.user, p.pass, p.via));
     if (p.action === "sendMessage") return json_(sendMessage_(p.token, p.topic, p.message, p.attachment));
     if (p.action === "resetRequest") return json_(resetRequest_(p.user));
-    if (p.action === "resetConfirm") return json_(resetConfirm_(p.user, p.code, p.pass));
+    if (p.action === "resetConfirm") return json_(resetConfirm_(p.user, p.code, p.pass, p.via));
     if (p.action === "changePassword") return json_(changePassword_(p.token, p.pass));
     if (!keyOk_(p.key)) return json_({ error: "Invalid admin key" });
     if (p.action === "sendReminders") return json_(startReminders_(["all", "Ambassador", "Participant"].indexOf(p.group) >= 0 ? p.group : "all", p.channel || "email"));

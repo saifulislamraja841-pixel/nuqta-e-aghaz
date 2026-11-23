@@ -146,10 +146,18 @@
   });
 
   /* ---------- API (Google Apps Script) ---------- */
+  /* Where this visit comes from, for the dashboard's "Signed in from" report:
+     app = Android app · home = added to the home screen (iPhone or Android) · phone = website on a phone · computer = website on a computer */
+  N.via = () => {
+    if (/NuqtaApp/.test(navigator.userAgent)) return "app";
+    if ((window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone) return "home";
+    return /Android|iPhone|iPad|iPod|Mobile/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) ? "phone" : "computer";
+  };
   N.api = async (action, params = {}) => {
     if (N.isDemo()) return N.demo(action, params);
     const u = new URL(C.scriptUrl);
     u.searchParams.set("action", action);
+    u.searchParams.set("via", N.via());
     Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
     const r = await fetch(u.toString(), { redirect: "follow" });
     const j = await r.json();
@@ -158,7 +166,7 @@
   };
   N.post = async (payload) => {
     if (N.isDemo()) return N.demoPost(payload);
-    const r = await fetch(C.scriptUrl, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
+    const r = await fetch(C.scriptUrl, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ via: N.via() }, payload)) });
     const j = await r.json();
     if (j.error) throw new Error(j.error);
     return j;
@@ -487,6 +495,7 @@
         totals: { accounts: people.length, activated: people.filter((p) => p.activated).length, loggedIn: people.filter((p) => p.lastSeen).length, never: people.filter((p) => !p.lastSeen).length,
           active24h: since(864e5), active7d: since(7 * 864e5), logins: people.reduce((s, p) => s + p.logins, 0) },
         groups: { ambassadors: grp("Ambassador"), participants: grp("Participant") }, daily, people, mail: { quota: 87, autoAmbassadors: true, autoParticipants: true },
+        via: { app: { people: 41, logins: 63, visits: 120 }, home: { people: 12, logins: 15, visits: 30 }, phone: { people: 88, logins: 140, visits: 210 }, computer: { people: 19, logins: 22, visits: 25 }, unknown: { people: 30, logins: 44, visits: 60 } },
       };
     }
     return { demo: true };
