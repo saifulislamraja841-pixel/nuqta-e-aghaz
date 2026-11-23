@@ -2,6 +2,9 @@ package org.nuqtaeaghaz.app;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.SharedPreferences;
+import android.provider.Settings;
 import android.content.ContentValues;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -35,6 +38,8 @@ public class MainActivity extends Activity {
     private static final int FILE_REQ = 1, MIC_REQ = 2;
     private ValueCallback<Uri[]> fileCb;          // photo / file picker for the chat
     private PermissionRequest pendingMic;         // voice notes
+    private AlertDialog micDialog;
+    private boolean waitingForSettings;
     private WebView web;
     private ProgressBar progress;
     private String lastUrl = HOME;
@@ -100,11 +105,15 @@ public class MainActivity extends Activity {
                     boolean mic = false;
                     for (String r : req.getResources()) if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) mic = true;
                     if (!mic || !isOurs(req.getOrigin())) { req.deny(); return; }
-                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    if (hasMic()) {
                         req.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                    } else if (micBlocked()) {
+                        req.deny();                        // Android won't ask again: offer the settings page
+                        showMicSettings();
                     } else {
+                        if (pendingMic != null) pendingMic.deny();
                         pendingMic = req;
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC_REQ);
+                        askMic();
                     }
                 });
             }
@@ -164,10 +173,61 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
         super.onRequestPermissionsResult(code, perms, res);
-        if (code == MIC_REQ && pendingMic != null) {
-            if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) pendingMic.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-            else { pendingMic.deny(); Toast.makeText(this, "Allow the microphone in Settings to send voice notes.", Toast.LENGTH_LONG).show(); }
-            pendingMic = null;
+        if (code == MIC_REQ) {
+            boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
+            if (pendingMic != null) {
+                if (ok) pendingMic.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                else pendingMic.deny();
+                pendingMic = null;
+            }
+            if (ok) micOn();
+            else if (micBlocked()) showMicSettings();
+            else Toast.makeText(this, "Voice notes need the microphone. Tap Voice note again and choose Allow.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /* ---------- microphone for voice notes ---------- */
+    private boolean hasMic() {
+        return Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+    private SharedPreferences prefs() { return getSharedPreferences("nuqta", MODE_PRIVATE); }
+    /** true when Android has stopped showing its Allow pop-up (denied twice, or "Don't ask again") */
+    private boolean micBlocked() {
+        return !hasMic() && prefs().getBoolean("micAsked", false)
+                && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO);
+    }
+    /** Shows Android's own "Allow Nuqta to record audio?" pop-up */
+    private void askMic() {
+        prefs().edit().putBoolean("micAsked", true).apply();
+        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC_REQ);
+    }
+    /** Microphone is blocked: explain, and open this app's settings page */
+    private void showMicSettings() {
+        if (micDialog != null && micDialog.isShowing()) return;
+        micDialog = new AlertDialog.Builder(this)
+                .setTitle("Allow the microphone")
+                .setMessage("To send voice notes, Nuqta needs the microphone.\n\nTap Open settings, then Permissions \u2192 Microphone \u2192 Allow. Then come back to the app.")
+                .setPositiveButton("Open settings", (d, w) -> {
+                    waitingForSettings = true;
+                    try {
+                        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i);
+                    } catch (ActivityNotFoundException e) { waitingForSettings = false; }
+                })
+                .setNegativeButton("Not now", null)
+                .show();
+    }
+    /** Tells the page the microphone is on, so the voice note can start */
+    private void micOn() {
+        web.evaluateJavascript("window.dispatchEvent(new Event('nuqta-mic-on'))", null);
+    }
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (waitingForSettings) {
+            waitingForSettings = false;
+            if (hasMic()) { Toast.makeText(this, "Microphone is on. You can record voice notes now.", Toast.LENGTH_SHORT).show(); micOn(); }
         }
     }
 
@@ -196,6 +256,20 @@ public class MainActivity extends Activity {
     }
 
     private class Bridge {
+        /** Voice note button: is the microphone allowed? */
+        @JavascriptInterface
+        public boolean hasMic() { return MainActivity.this.hasMic(); }
+
+        /** Voice note button: show the Allow pop-up, or the settings help if Android has blocked it */
+        @JavascriptInterface
+        public void requestMic() {
+            runOnUiThread(() -> {
+                if (MainActivity.this.hasMic()) micOn();
+                else if (micBlocked()) showMicSettings();
+                else askMic();
+            });
+        }
+
         @JavascriptInterface
         public void retry() {
             runOnUiThread(() -> web.loadUrl(lastUrl));

@@ -345,3 +345,10 @@ footer{padding:70px 0 40px;border-top:1px solid var(--line);margin-top:100px}
 .amb-single .steps{max-width:640px;margin-left:auto;margin-right:auto}
 @media (max-width:900px){.comp-wrap.six{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:560px){.ref-banner{left:16px;right:16px;width:auto;max-width:none;translate:none;border-radius:16px;justify-content:center;flex-wrap:wrap;text-align:center;font-size:13px}}
+
+/* microphone help pop-up */
+.modal-box.sm{width:min(440px,100%);height:auto;max-height:88vh;overflow:auto}
+.mic-help{padding:18px 22px 20px;color:var(--muted);font-size:14.5px;line-height:1.55}
+.mic-help ol{margin:12px 0 18px 20px;display:grid;gap:8px}
+.mic-help b{color:var(--text);font-weight:600}
+.mic-btns{display:flex;justify-content:flex-end;gap:10px}

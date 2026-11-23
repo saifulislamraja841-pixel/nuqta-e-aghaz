@@ -187,6 +187,40 @@
     txt: "text/plain", csv: "text/csv", zip: "application/zip", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
   const FILE_MAX = 6 * 1024 * 1024;
   const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+  /* ---------- microphone blocked: show how to allow it ---------- */
+  let micWaiting = null;            // Android app: the voice note button waiting for the microphone
+  window.addEventListener("nuqta-mic-on", () => {
+    const w = micWaiting; micWaiting = null;
+    if (w && Date.now() - w.at < 5 * 60 * 1000 && document.body.contains(w.btn)) w.btn.click();   // start the voice note
+  });
+  N.micHelp = (err, retry) => {
+    const ua = navigator.userAgent;
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const android = /Android/.test(ua);
+    const noApi = !navigator.mediaDevices || !window.MediaRecorder;
+    const oldApp = /NuqtaApp/.test(ua) && !(window.NuqtaApp && window.NuqtaApp.requestMic);                  // Android app from before this fix
+    const steps = oldApp ? ["Uninstall the Nuqta app (long-press its icon → Uninstall).", "Install it again from <b>nuqtaeaghaz.org/install</b>.", "Tap <b>Voice note</b> and choose <b>Allow</b>."]
+      : noApi
+      ? (ios ? ["Tap the share or ⋯ button and choose <b>Open in Safari</b>.", "Open the portal there and tap <b>Voice note</b> again."]
+             : ["Tap ⋮ and choose <b>Open in Chrome</b> (WhatsApp's own browser can't record).", "Open the portal there and tap <b>Voice note</b> again."])
+      : ios ? ["Open the iPhone <b>Settings</b> app.", "Go to <b>Apps → Safari → Microphone</b> (on older iPhones: <b>Safari → Microphone</b>).", "Choose <b>Allow</b> or <b>Ask</b>.", "Come back here and tap <b>Try again</b>. If it still doesn't ask, close Safari fully and open the portal again."]
+      : android ? ["Tap the icon to the left of the web address (or ⋮ → ⓘ).", "Tap <b>Permissions</b> and turn <b>Microphone</b> on.", "Still blocked? Open phone <b>Settings → Apps → Chrome → Permissions → Microphone → Allow</b>.", "Come back here and tap <b>Try again</b>."]
+      : ["Click the icon to the left of the web address.", "Set <b>Microphone</b> to <b>Allow</b>.", "Tap <b>Try again</b>."];
+    let m = N.$("#micModal");
+    if (!m) {
+      m = document.createElement("div");
+      m.id = "micModal"; m.className = "modal"; m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
+      document.body.appendChild(m);
+      m.addEventListener("click", (e) => { if (e.target === m || e.target.closest(".x, .mic-close")) m.classList.remove("open"); });
+    }
+    m.innerHTML = `<div class="modal-box sm"><div class="modal-top"><h3>${oldApp ? "Update the Nuqta app" : noApi ? "Open in Chrome or Safari" : "Allow the microphone"}</h3><button class="x" aria-label="Close">×</button></div>
+      <div class="mic-help"><p>${oldApp ? "This version of the app can't use the microphone. The new version asks you to allow it." : noApi ? "This browser can't record voice notes." : "Your phone has blocked the microphone for this site, so it can't ask you again. Turn it on like this:"}</p>
+      <ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>
+      <div class="mic-btns"><button type="button" class="btn btn-ghost btn-sm mic-close">Not now</button>${noApi || oldApp ? "" : `<button type="button" class="btn btn-primary btn-sm mic-retry">${N.icon("mic")}Try again</button>`}</div></div></div>`;
+    const r = N.$(".mic-retry", m);
+    if (r) r.addEventListener("click", () => { m.classList.remove("open"); if (retry) retry(); });
+    m.classList.add("open");
+  };
   N.attacher = (el, { maxVoice = 120, onSend = null } = {}) => {
     let att = null, rec = null, timer = null, started = 0, stream = null, after = "";   // after: "" | "cancel" | "send"
     el.classList.add("attacher");
@@ -229,9 +263,15 @@
     const stopRec = () => { if (rec && rec.state !== "inactive") rec.stop(); };
     vbtn.addEventListener("click", async () => {
       if (rec && rec.state === "recording") return stopRec();
-      if (!navigator.mediaDevices || !window.MediaRecorder) return N.toast("Voice notes don't work in this browser. Try Chrome or Safari.");
+      if (!navigator.mediaDevices || !window.MediaRecorder) return N.micHelp(null, () => vbtn.click());
       try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-      catch (e) { return N.toast("Allow microphone access to record a voice note."); }
+      catch (e) {
+        if (e && e.name === "NotFoundError") return N.toast("No microphone was found on this device.");
+        if (window.NuqtaApp && window.NuqtaApp.requestMic) {     // Android app: it shows its own Allow / Open settings pop-up
+          micWaiting = { btn: vbtn, at: Date.now() }; return;     // the recording starts by itself once it's allowed
+        }
+        return N.micHelp(e, () => vbtn.click());
+      }
       const type = ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
       const chunks = [];
       rec = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 48000 }, type ? { mimeType: type } : {}));
