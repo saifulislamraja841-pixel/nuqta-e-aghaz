@@ -193,30 +193,57 @@
     const w = micWaiting; micWaiting = null;
     if (w && Date.now() - w.at < 5 * 60 * 1000 && document.body.contains(w.btn)) w.btn.click();   // start the voice note
   });
-  N.micHelp = (err, retry) => {
-    const ua = navigator.userAgent;
+  /* Which Android app is this page running in? 0 = a normal browser.
+     1 = first app (Nov 20): no microphone, no file picker.  3 = Nov 22 app: microphone + files, no settings button.
+     4 = Nov 23 app and later: asks for the microphone and opens settings itself. */
+  N.appBuild = () => {
+    if (!/NuqtaApp/.test(navigator.userAgent)) return 0;
+    const A = window.NuqtaApp || {};
+    return A.requestMic ? 4 : A.saveFile ? 3 : 1;
+  };
+  /* Links the older apps open outside themselves (they hand "intent:" links to Android) */
+  const SETTINGS_LINK = "intent:org.nuqtaeaghaz.app#Intent;scheme=package;action=android.settings.APPLICATION_DETAILS_SETTINGS;end";
+  const chromeLink = () => "intent://" + location.host + location.pathname + location.search + "#Intent;scheme=https;package=com.android.chrome;end";
+  /* what: "mic" | "file" */
+  N.micHelp = (err, retry, what = "mic") => {
+    const ua = navigator.userAgent, build = N.appBuild();
     const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
     const android = /Android/.test(ua);
-    const noApi = !navigator.mediaDevices || !window.MediaRecorder;
-    const oldApp = /NuqtaApp/.test(ua) && !(window.NuqtaApp && window.NuqtaApp.requestMic);                  // Android app from before this fix
-    const steps = oldApp ? ["Uninstall the Nuqta app (long-press its icon → Uninstall).", "Install it again from <b>nuqtaeaghaz.org/install</b>.", "Tap <b>Voice note</b> and choose <b>Allow</b>."]
-      : noApi
-      ? (ios ? ["Tap the share or ⋯ button and choose <b>Open in Safari</b>.", "Open the portal there and tap <b>Voice note</b> again."]
-             : ["Tap ⋮ and choose <b>Open in Chrome</b> (WhatsApp's own browser can't record).", "Open the portal there and tap <b>Voice note</b> again."])
-      : ios ? ["Open the iPhone <b>Settings</b> app.", "Go to <b>Apps → Safari → Microphone</b> (on older iPhones: <b>Safari → Microphone</b>).", "Choose <b>Allow</b> or <b>Ask</b>.", "Come back here and tap <b>Try again</b>. If it still doesn't ask, close Safari fully and open the portal again."]
-      : android ? ["Tap the icon to the left of the web address (or ⋮ → ⓘ).", "Tap <b>Permissions</b> and turn <b>Microphone</b> on.", "Still blocked? Open phone <b>Settings → Apps → Chrome → Permissions → Microphone → Allow</b>.", "Come back here and tap <b>Try again</b>."]
-      : ["Click the icon to the left of the web address.", "Set <b>Microphone</b> to <b>Allow</b>.", "Tap <b>Try again</b>."];
+    const noApi = what === "mic" && (!navigator.mediaDevices || !window.MediaRecorder);
+    let title, intro, steps, action = "";
+    if (build === 1) {                                   // oldest app: can't do it at all → Chrome
+      title = "Open the portal in Chrome";
+      intro = (what === "mic" ? "Voice notes" : "Photos and files") + " can't be sent from this version of the app. They work in Chrome:";
+      steps = ["Tap <b>Open in Chrome</b> below.", "Sign in to your portal there (same username and password).", "Send your " + (what === "mic" ? "voice note" : "photo or file") + " from there."];
+      action = `<a class="btn btn-primary btn-sm" href="${chromeLink()}">Open in Chrome</a>`;
+    } else if (build === 3) {                            // Nov 22 app: microphone switched off for the app
+      title = "Allow the microphone";
+      intro = "The microphone is turned off for the Nuqta app. Turn it on once:";
+      steps = ["Tap <b>Open settings</b> below.", "Tap <b>Permissions</b> → <b>Microphone</b> → <b>Allow</b>.", "Come back to the app and tap <b>Voice note</b> again."];
+      action = `<a class="btn btn-primary btn-sm" href="${SETTINGS_LINK}">Open settings</a>`;
+    } else if (noApi) {
+      title = "Open in Chrome or Safari";
+      intro = "This browser can't record voice notes.";
+      steps = ios ? ["Tap the share or ⋯ button and choose <b>Open in Safari</b>.", "Open the portal there and tap <b>Voice note</b> again."]
+        : ["Tap ⋮ and choose <b>Open in Chrome</b> (WhatsApp's own browser can't record).", "Open the portal there and tap <b>Voice note</b> again."];
+    } else {
+      title = "Allow the microphone";
+      intro = "Your phone has blocked the microphone for this site, so it can't ask you again. Turn it on like this:";
+      steps = ios ? ["Open the iPhone <b>Settings</b> app.", "Go to <b>Apps → Safari → Microphone</b> (on older iPhones: <b>Safari → Microphone</b>).", "Choose <b>Allow</b> or <b>Ask</b>.", "Come back here and tap <b>Try again</b>. If it still doesn't ask, close Safari fully and open the portal again."]
+        : android ? ["Tap the icon to the left of the web address (or ⋮ → ⓘ).", "Tap <b>Permissions</b> and turn <b>Microphone</b> on.", "Still blocked? Open phone <b>Settings → Apps → Chrome → Permissions → Microphone → Allow</b>.", "Come back here and tap <b>Try again</b>."]
+        : ["Click the icon to the left of the web address.", "Set <b>Microphone</b> to <b>Allow</b>.", "Tap <b>Try again</b>."];
+      action = `<button type="button" class="btn btn-primary btn-sm mic-retry">${N.icon("mic")}Try again</button>`;
+    }
     let m = N.$("#micModal");
     if (!m) {
       m = document.createElement("div");
       m.id = "micModal"; m.className = "modal"; m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
       document.body.appendChild(m);
-      m.addEventListener("click", (e) => { if (e.target === m || e.target.closest(".x, .mic-close")) m.classList.remove("open"); });
+      m.addEventListener("click", (e) => { if (e.target === m || e.target.closest(".x, .mic-close, a.btn")) m.classList.remove("open"); });
     }
-    m.innerHTML = `<div class="modal-box sm"><div class="modal-top"><h3>${oldApp ? "Update the Nuqta app" : noApi ? "Open in Chrome or Safari" : "Allow the microphone"}</h3><button class="x" aria-label="Close">×</button></div>
-      <div class="mic-help"><p>${oldApp ? "This version of the app can't use the microphone. The new version asks you to allow it." : noApi ? "This browser can't record voice notes." : "Your phone has blocked the microphone for this site, so it can't ask you again. Turn it on like this:"}</p>
-      <ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>
-      <div class="mic-btns"><button type="button" class="btn btn-ghost btn-sm mic-close">Not now</button>${noApi || oldApp ? "" : `<button type="button" class="btn btn-primary btn-sm mic-retry">${N.icon("mic")}Try again</button>`}</div></div></div>`;
+    m.innerHTML = `<div class="modal-box sm"><div class="modal-top"><h3>${title}</h3><button class="x" aria-label="Close">×</button></div>
+      <div class="mic-help"><p>${intro}</p><ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>
+      <div class="mic-btns"><button type="button" class="btn btn-ghost btn-sm mic-close">Not now</button>${action}</div></div></div>`;
     const r = N.$(".mic-retry", m);
     if (r) r.addEventListener("click", () => { m.classList.remove("open"); if (retry) retry(); });
     m.classList.add("open");
@@ -228,6 +255,9 @@
       <button type="button" class="btn btn-ghost btn-sm att-voice">${N.icon("mic")}Voice note</button>
       <label class="btn btn-ghost btn-sm att-file">${N.icon("clip")}File<input type="file" accept="${Object.keys(FILE_TYPES).map((x) => "." + x).join(",")}" hidden></label></div><div class="att-prev"></div>`;
     const prev = N.$(".att-prev", el), vbtn = N.$(".att-voice", el), photo = N.$(".att-photo input", el), doc = N.$(".att-file input", el);
+    N.$$(".att-photo, .att-file", el).forEach((l) => l.addEventListener("click", (e) => {     // oldest app has no file picker
+      if (N.appBuild() === 1) { e.preventDefault(); N.micHelp(null, null, "file"); }
+    }));
     const show = () => {
       if (rec && rec.state === "recording") {               // recording: timer + Cancel / Send
         prev.innerHTML = `<div class="rec-bar"><span class="rec-dot"></span><span class="rec-t">0:00</span><span class="rec-l">Recording…</span>
@@ -263,7 +293,7 @@
     const stopRec = () => { if (rec && rec.state !== "inactive") rec.stop(); };
     vbtn.addEventListener("click", async () => {
       if (rec && rec.state === "recording") return stopRec();
-      if (!navigator.mediaDevices || !window.MediaRecorder) return N.micHelp(null, () => vbtn.click());
+      if (N.appBuild() === 1 || !navigator.mediaDevices || !window.MediaRecorder) return N.micHelp(null, () => vbtn.click());
       try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
       catch (e) {
         if (e && e.name === "NotFoundError") return N.toast("No microphone was found on this device.");
